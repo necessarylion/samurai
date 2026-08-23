@@ -61,6 +61,7 @@ const lastLabel = computed(() => {
   return text
 })
 
+const powerAt = computed(() => game.ladders?.powers ?? {})
 const powerSquares = computed(() =>
   Object.entries(game.ladders?.powers ?? {}).map(([n, power]) => ({ n: Number(n), power })),
 )
@@ -439,6 +440,16 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
               :fill="TILE.fill"
               stroke="rgba(28, 22, 19, 0.45)"
               stroke-width="0.025"
+            />
+            <!-- A power square is washed in its power's colour. -->
+            <rect
+              v-if="powerAt[n]"
+              :x="centre(n)[0] - 0.5"
+              :y="centre(n)[1] - 0.5"
+              width="1"
+              height="1"
+              :fill="POWER_GLOW[powerAt[n]]"
+              opacity="0.28"
             />
             <text
               :x="centre(n)[0] - 0.42"
