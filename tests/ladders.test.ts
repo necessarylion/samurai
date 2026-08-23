@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { JUMPS, LAST_SQUARE, LaddersGame, POWER_COUNTS, SLIP_STEPS, SPRINT_STEPS, drawPowers, squareAt, type Power } from '../shared/ladders'
+import { JUMPS, LAST_SQUARE, LaddersGame, POWER_COUNTS, SLIP_STEPS, SNAKE_TAILS, SPRINT_STEPS, drawPowers, squareAt, type Power } from '../shared/ladders'
 import { Rng } from '../shared/rng'
 
 /** A fixed set of power squares, so the scripted throws below land where they mean to. */
@@ -131,7 +131,7 @@ describe('rolling', () => {
     expect(game.state.result).toMatchObject({ winner: 0, standings: [0, 2, 1] })
   })
 
-  it('draws a full set of power squares per game, clear of every jump and each other', () => {
+  it('draws a full set of power squares per game: a swap on a snake tail, the rest clear of every jump and each other', () => {
     const jumpSquares = new Set([...Object.keys(JUMPS).map(Number), ...Object.values(JUMPS)])
     const total = Object.values(POWER_COUNTS).reduce((a, b) => a + b, 0)
     const layouts = new Set<string>()
@@ -140,10 +140,13 @@ describe('rolling', () => {
       const squares = Object.keys(powers).map(Number)
       expect(squares).toHaveLength(total)
       layouts.add(squares.sort((a, b) => a - b).join(','))
+      const onTail = squares.filter((n) => SNAKE_TAILS.includes(n))
+      expect(onTail).toHaveLength(1)
+      expect(powers[onTail[0]]).toBe('swap')
       for (const n of squares) {
-        expect(n).toBeGreaterThan(4)
+        expect(n).toBeGreaterThan(2)
         expect(n).toBeLessThan(LAST_SQUARE)
-        expect(jumpSquares.has(n)).toBe(false)
+        if (n !== onTail[0]) expect(jumpSquares.has(n)).toBe(false)
         expect(powers[n + SPRINT_STEPS]).toBeUndefined()
         expect(powers[n - SLIP_STEPS]).toBeUndefined()
       }
@@ -153,6 +156,27 @@ describe('rolling', () => {
     }
     expect(layouts.size).toBeGreaterThan(40)
     expect(Object.keys(new LaddersGame(2, 3).state.powers)).toHaveLength(total)
+  })
+
+  it('moves the power squares on the server clock, and a swap fires at a snake tail', () => {
+    const game = new LaddersGame(2, 3, false)
+    const before = { ...game.state.powers }
+    const rngBefore = game.state.rngPosition
+    game.reshufflePowers()
+    expect(game.state.powers).not.toEqual(before)
+    expect(game.state.rngPosition).not.toBe(rngBefore)
+    expect(Object.keys(game.state.powers)).toHaveLength(Object.keys(before).length)
+    expect(game.state.log[game.state.log.length - 1].text).toMatch(/power squares move/)
+
+    // Eaten by the snake from 27 onto a swap waiting at 5, with a player ahead to trade with.
+    const eaten = started(2)
+    eaten.state.powers = { 5: 'swap' }
+    eaten.state.players[0].pos = 25
+    eaten.state.players[1].pos = 30
+    rollOf(eaten, 2)
+    eaten.roll(0)
+    expect(eaten.state.lastRoll).toMatchObject({ landed: 27, via: [5], to: 30, power: 'swap' })
+    expect(eaten.state.players[1].pos).toBe(5)
   })
 
   it('sprints on and slips back, with the stops kept for the replay', () => {

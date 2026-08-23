@@ -54,8 +54,10 @@ export const isSnake = (from: number): boolean => (JUMPS[from] ?? from) < from
  * next turn, `carry` brings everyone who was standing where you set off from
  * along to your square, and `swap` trades places with the player just ahead.
  *
- * Where they sit is drawn per game from the `Rng`, so no two tables are alike.
- * No power square is the start or end of a jump, and the spacing keeps a sprint
+ * Where they sit is drawn per game from the `Rng`, so no two tables are alike,
+ * and redrawn every `POWER_SHUFFLE_MS` while the game runs. One swap always
+ * waits at the foot of a snake — being eaten still hands you a trade. Otherwise
+ * no power square is the start or end of a jump, and the spacing keeps a sprint
  * or slip from landing on another power, so one landing fires at most one power.
  */
 export type Power = 'sprint' | 'slip' | 'again' | 'skip' | 'carry' | 'swap'
@@ -76,7 +78,15 @@ export const POWER_COUNTS: Readonly<Record<Power, number>> = {
 /** Gaps between two powers that would let one move you onto the other. */
 const POWER_GAPS = new Set([0, 1, 2, SPRINT_STEPS, SLIP_STEPS])
 
-/** Draw the board's power squares: clear of every jump, the top, and each other. */
+/** How often the power squares move while a game is running. */
+export const POWER_SHUFFLE_MS = 2 * 60 * 1000
+
+/** Where the snakes drop you — one of these always carries a swap. */
+export const SNAKE_TAILS: readonly number[] = Object.entries(JUMPS)
+  .filter(([from, to]) => to < Number(from))
+  .map(([, to]) => to)
+
+/** Draw the board's power squares: one swap on a snake's tail, the rest clear of every jump, the top, and each other. */
 export function drawPowers(rng: Rng): Record<number, Power> {
   const jumpSquares = new Set([...Object.keys(JUMPS).map(Number), ...Object.values(JUMPS)])
   const candidates = rng.shuffle(
@@ -84,14 +94,15 @@ export function drawPowers(rng: Rng): Record<number, Power> {
   )
   const wanted: Power[] = []
   for (const [power, count] of Object.entries(POWER_COUNTS) as [Power, number][]) {
-    for (let i = 0; i < count; i++) wanted.push(power)
+    for (let i = 0; i < count - (power === 'swap' ? 1 : 0); i++) wanted.push(power)
   }
-  const powers: Record<number, Power> = {}
-  const chosen: number[] = []
+  const tail = SNAKE_TAILS[rng.int(SNAKE_TAILS.length)]
+  const powers: Record<number, Power> = { [tail]: 'swap' }
+  const chosen: number[] = [tail]
   for (const n of candidates) {
-    if (chosen.length === wanted.length) break
+    if (chosen.length > wanted.length) break
     if (chosen.some((c) => POWER_GAPS.has(Math.abs(c - n)))) continue
-    powers[n] = wanted[chosen.length]
+    powers[n] = wanted[chosen.length - 1]
     chosen.push(n)
   }
   return powers
@@ -328,6 +339,16 @@ export class LaddersGame {
   /** The shot clock ran out: throw for whoever is holding the table up. */
   timeOut(): Outcome {
     return this.roll(this.state.current)
+  }
+
+  /** Move every power square, on the server's clock. Nothing in play is touched. */
+  reshufflePowers(): void {
+    const s = this.state
+    if (s.phase !== 'play') return
+    const rng = new Rng(s.rngPosition)
+    s.powers = drawPowers(rng)
+    s.rngPosition = rng.position
+    this.log(null, 'The power squares move.')
   }
 
   /** Suspend the table; any seated player may. Mirrors the other games' pause. */

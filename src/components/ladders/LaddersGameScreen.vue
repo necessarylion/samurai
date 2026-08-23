@@ -7,6 +7,7 @@ import { PLAYER_COLOURS } from '@shared/colours'
 import { hexRoundedPath } from '@shared/hex'
 import { COLOUR_ORDER } from '@shared/colours'
 import { PLAYER_BACKGROUNDS } from '@/game/backgrounds'
+import { SNAKE_ART, type SnakeArt } from '@/game/snakes'
 import { BOARD_SIDE, JUMPS, LAST_SQUARE, isSnake, squareAt, type LastRoll, type Power } from '@shared/ladders'
 import { useCountdown } from '@/composables/useCountdown'
 import { t } from '@/i18n'
@@ -27,11 +28,23 @@ const { label: clockLabel, urgent: clockUrgent } = useCountdown(
   () => game.isPaused,
 )
 
+/**
+ * Whose turn the table *shows*. The server passes the turn the instant a throw
+ * is settled, but the replay is still walking the token — so until it has
+ * finished, the roller stays marked as current, and the next seat lights up
+ * only once the move is done.
+ */
+const shownCurrent = computed(() =>
+  animating.value && last.value ? last.value.player : (game.ladders?.current ?? 0),
+)
+const myTurnShown = computed(() => game.ladders?.phase === 'play' && shownCurrent.value === game.you)
+
 const turnLabel = computed(() => {
   if (isOver.value) return t('game.over')
   if (game.isPaused) return t('game.paused.badge')
-  if (game.ldIsMyTurn) return last.value?.again && last.value.player === game.you ? t('ladders.again') : t('ladders.turn.yours')
-  return t('ladders.turn.other', { name: nameOf(game.ladders?.current ?? 0) })
+  if (animating.value) return t('ladders.turn.moving', { name: nameOf(shownCurrent.value) })
+  if (myTurnShown.value) return last.value?.again && last.value.player === game.you ? t('ladders.again') : t('ladders.turn.yours')
+  return t('ladders.turn.other', { name: nameOf(shownCurrent.value) })
 })
 
 const lastLabel = computed(() => {
@@ -118,27 +131,46 @@ const TILES = [
 ]
 const tileOf = (n: number) => TILES[(n + 2 * squareAt(n).row) % TILES.length]
 
-const SNAKE_INKS = ['#5b3a8a', '#2f6b2f', '#a35a1d', '#8a2f6b', '#1f6f86']
+/** A snake image pinned head-to-tail between two squares. */
+interface Snake { from: number; to: number; art: SnakeArt; transform: string }
 
-interface Snake { from: number; to: number; d: string; head: [number, number]; ink: string }
+/** A long snake must not sprawl wider than this many squares; it is squashed a little instead. */
+const MAX_SNAKE_WIDTH = 1.9
+
+/**
+ * Place a snake picture so its head sits on `from` and its tail tip on `to`:
+ * scale the image until those two points are the right distance apart, turn
+ * it to match the line between the squares, and squash a long snake sideways
+ * (never by more than a third) so it does not bury half the board.
+ */
+function snakeGeometry(from: number, to: number, i: number): Snake {
+  const art = SNAKE_ART[i % SNAKE_ART.length]
+  const [x0, y0] = centre(from)
+  const [x1, y1] = centre(to)
+  const ax = art.head[0] * art.width
+  const ay = art.head[1] * art.height
+  const bx = art.tail[0] * art.width
+  const by = art.tail[1] * art.height
+  const len = Math.hypot(x1 - x0, y1 - y0) || 1
+  let s = len / (Math.hypot(bx - ax, by - ay) || 1)
+  const kx = Math.max(0.67, Math.min(1, MAX_SNAKE_WIDTH / (art.width * s)))
+  // With the squash in, re-fit the scale so head and tail still land exactly.
+  s = len / (Math.hypot((bx - ax) * kx, by - ay) || 1)
+  const angle =
+    ((Math.atan2(y1 - y0, x1 - x0) - Math.atan2(by - ay, (bx - ax) * kx)) * 180) / Math.PI
+  const transform = `translate(${fmt(x0)} ${fmt(y0)}) rotate(${fmt(angle)}) scale(${fmt(s * kx)} ${fmt(s)}) translate(${fmt(-ax)} ${fmt(-ay)})`
+  return { from, to, art, transform }
+}
+
 interface Ladder { from: number; to: number; rails: [string, string]; rungs: string[] }
 
-/** An S-curve from the head down to the tail, bowing out either side of the line. */
+const fmt = (n: number) => n.toFixed(3)
+
 const snakes = computed<Snake[]>(() =>
   Object.entries(JUMPS)
     .map(([f, to]) => [Number(f), to] as const)
     .filter(([f]) => isSnake(f))
-    .map(([from, to], i) => {
-      const [x0, y0] = centre(from)
-      const [x1, y1] = centre(to)
-      const dx = x1 - x0
-      const dy = y1 - y0
-      const len = Math.hypot(dx, dy) || 1
-      const px = (-dy / len) * 0.8
-      const py = (dx / len) * 0.8
-      const d = `M ${x0} ${y0} C ${x0 + dx / 3 + px} ${y0 + dy / 3 + py}, ${x0 + (2 * dx) / 3 - px} ${y0 + (2 * dy) / 3 - py}, ${x1} ${y1}`
-      return { from, to, d, head: [x0, y0], ink: SNAKE_INKS[i % SNAKE_INKS.length] }
-    }),
+    .map(([from, to], i) => snakeGeometry(from, to, i)),
 )
 
 /** Two rails a little apart, with a rung every half square. */
@@ -305,7 +337,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
         <span
           v-if="clockLabel !== null && !isOver"
           class="clock"
-          :class="{ urgent: clockUrgent, mine: game.ldIsMyTurn }"
+          :class="{ urgent: clockUrgent, mine: myTurnShown }"
           >{{ clockLabel }}</span
         >
       </div>
@@ -325,7 +357,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
             v-for="p in players"
             :key="p.id"
             class="player"
-            :class="{ current: p.id === game.ladders?.current && !isOver, offline: !p.connected, done: !!p.place }"
+            :class="{ current: p.id === shownCurrent && !isOver, offline: !p.connected, done: !!p.place }"
             :style="{ '--seat': PLAYER_COLOURS[p.colour].ink }"
           >
             <svg class="swatch" viewBox="0 0 17.32 20" aria-hidden="true">
@@ -427,6 +459,17 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
             <text v-if="n === LAST_SQUARE" :x="centre(n)[0] + 0.08" :y="centre(n)[1] + 0.2" class="flag">🏁</text>
           </g>
 
+          <!-- Ladders -->
+          <g v-for="l in ladders" :key="`l${l.from}`" class="ladder">
+            <path v-for="(r, i) in l.rails" :key="i" :d="r" class="rail" />
+            <path v-for="(r, i) in l.rungs" :key="`r${i}`" :d="r" class="rung" />
+          </g>
+
+          <!-- Snakes: a picture each, head on the head square, tail tip where it drops you. -->
+          <g v-for="s in snakes" :key="`s${s.from}`" class="snake">
+            <image :href="s.art.src" :width="s.art.width" :height="s.art.height" :transform="s.transform" />
+          </g>
+
           <!-- Power squares carry their mark on a small paper disc. -->
           <g
             v-for="q in powerSquares"
@@ -445,27 +488,12 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
             </g>
           </g>
 
-          <!-- Ladders -->
-          <g v-for="l in ladders" :key="`l${l.from}`" class="ladder">
-            <path v-for="(r, i) in l.rails" :key="i" :d="r" class="rail" />
-            <path v-for="(r, i) in l.rungs" :key="`r${i}`" :d="r" class="rung" />
-          </g>
-
-          <!-- Snakes -->
-          <g v-for="s in snakes" :key="`s${s.from}`" class="snake">
-            <path :d="s.d" :stroke="s.ink" class="body" />
-            <path :d="s.d" class="pattern" />
-            <circle :cx="s.head[0]" :cy="s.head[1]" r="0.18" :fill="s.ink" />
-            <circle :cx="s.head[0] - 0.07" :cy="s.head[1] - 0.06" r="0.04" fill="#fff" />
-            <circle :cx="s.head[0] + 0.07" :cy="s.head[1] - 0.06" r="0.04" fill="#fff" />
-          </g>
-
           <!-- Tokens -->
           <g
             v-for="p in players"
             :key="p.id"
             class="token"
-            :class="{ current: p.id === game.ladders?.current && !isOver, jumping: jumping.has(p.id) }"
+            :class="{ current: p.id === shownCurrent && !isOver, jumping: jumping.has(p.id) }"
             :style="tokenAt(p.id, p.pos)"
           >
             <!-- A tile with some depth: a contact shadow, a darker extruded
@@ -684,18 +712,8 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
   fill: none;
 }
 
-.snake .body {
-  fill: none;
-  stroke-width: 0.17;
-  stroke-linecap: round;
-}
-
-.snake .pattern {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.55);
-  stroke-width: 0.05;
-  stroke-dasharray: 0.14 0.14;
-  stroke-linecap: round;
+.snake image {
+  filter: drop-shadow(0 0.04px 0.05px rgba(0, 0, 0, 0.35));
 }
 
 .token {

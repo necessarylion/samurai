@@ -26,7 +26,7 @@ import {
 import { DEFAULT_OPTIONS, Game, type GameOptions, type GameState } from '../shared/engine'
 import { HalliGame, fruitTotals, ringingFruit, type HalliGameState } from '../shared/halligalli'
 import { SnakeGame, type SnakeGameState } from '../shared/snake'
-import { LaddersGame, type LaddersGameState } from '../shared/ladders'
+import { LaddersGame, POWER_SHUFFLE_MS, type LaddersGameState } from '../shared/ladders'
 import type {
   AnyClientState,
   CarnivalClientState,
@@ -123,6 +123,11 @@ export class Room {
   snake: SnakeGame | null = null
   /** The running Snakes & Ladders game, when this room's kind is ladders. */
   ladders: LaddersGame | null = null
+  /**
+   * When the ladders table next moves its power squares. Like the shot clock it
+   * is not part of the snapshot: a restored table simply arms a fresh period.
+   */
+  powerShuffleAt: number | null = null
   hostToken = ''
   lastActivity = Date.now()
   /**
@@ -1343,6 +1348,27 @@ export class RoomManager {
       // time anyone out until it is resumed.
       if (room.paused) continue
       if (room.turnDeadline !== null && now >= room.turnDeadline) due.push(room)
+    }
+    return due
+  }
+
+  /**
+   * Ladders tables whose power squares are due to move, arming the period on
+   * the way past. A paused table waits — its powers move once it resumes.
+   */
+  duePowerShuffles(now = Date.now()): Room[] {
+    const due: Room[] = []
+    for (const room of this.rooms.values()) {
+      const s = room.ladders?.state
+      if (!s || s.phase !== 'play') {
+        room.powerShuffleAt = null
+        continue
+      }
+      if (room.powerShuffleAt === null) room.powerShuffleAt = now + POWER_SHUFFLE_MS
+      if (!s.paused && now >= room.powerShuffleAt) {
+        due.push(room)
+        room.powerShuffleAt = now + POWER_SHUFFLE_MS
+      }
     }
     return due
   }

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_OPTIONS } from '../shared/engine'
 import type { LaddersClientState } from '../shared/protocol'
-import { Room, type RoomSnapshot } from '../server/rooms'
+import { POWER_SHUFFLE_MS } from '../shared/ladders'
+import { Room, RoomManager, type RoomSnapshot } from '../server/rooms'
 
 /** A started two-player Snakes & Ladders room. */
 function room(turnSeconds = 0): Room {
@@ -51,6 +52,20 @@ describe('a Snakes & Ladders room', () => {
     r.ladders!.timeOut()
     r.syncTurnTimer(5000)
     expect(r.turnDeadline).toBe(35_000)
+  })
+
+  it('moves the power squares every two minutes, but not while paused', () => {
+    const r = room()
+    const mgr = new RoomManager()
+    mgr['rooms'].set(r.code, r)
+    expect(mgr.duePowerShuffles(1000)).toEqual([])
+    expect(r.powerShuffleAt).toBe(1000 + POWER_SHUFFLE_MS)
+    expect(mgr.duePowerShuffles(1000 + POWER_SHUFFLE_MS - 1)).toEqual([])
+    r.ladders!.pause(0)
+    expect(mgr.duePowerShuffles(1000 + POWER_SHUFFLE_MS + 5000)).toEqual([])
+    r.ladders!.resume(0)
+    expect(mgr.duePowerShuffles(1000 + POWER_SHUFFLE_MS + 6000)).toEqual([r])
+    expect(r.powerShuffleAt).toBe(1000 + POWER_SHUFFLE_MS + 6000 + POWER_SHUFFLE_MS)
   })
 
   it('deals a fresh game on rematch once it is over', () => {

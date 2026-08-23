@@ -23,6 +23,7 @@ export const enLadders = {
     'The first player to land exactly on square 100 wins. Throw too much and you bounce back — count up to 100, then the rest backwards. The race runs on for the places behind until one player is left.',
   'ladders.turn.yours': 'Your turn — roll the die',
   'ladders.turn.other': '{name} to roll',
+  'ladders.turn.moving': '{name} is moving…',
   'ladders.roll': 'Roll',
   'ladders.again': 'Extra throw — roll again',
   'ladders.last.moved': '{name} rolled {roll} and moved to {to}',

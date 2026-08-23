@@ -559,6 +559,14 @@ setInterval(() => {
   }
 }, SNAKE_TICK_MS).unref()
 
+/** Snakes & Ladders moves its power squares every couple of minutes. */
+setInterval(() => {
+  for (const room of rooms.duePowerShuffles()) {
+    room.ladders!.reshufflePowers()
+    commit(room)
+  }
+}, 5000).unref()
+
 /**
  * A heartbeat both ways. The ping gives the browser something to hear, so a
  * connection that died without a close frame — a laptop lid, a proxy timing the
