@@ -40,9 +40,10 @@ const shownCurrent = computed(() =>
 const myTurnShown = computed(() => game.ladders?.phase === 'play' && shownCurrent.value === game.you)
 
 const turnLabel = computed(() => {
+  // The winning move is still walking while the server already says over.
+  if (animating.value) return t('ladders.turn.moving', { name: nameOf(shownCurrent.value) })
   if (isOver.value) return t('game.over')
   if (game.isPaused) return t('game.paused.badge')
-  if (animating.value) return t('ladders.turn.moving', { name: nameOf(shownCurrent.value) })
   if (myTurnShown.value) return last.value?.again && last.value.player === game.you ? t('ladders.again') : t('ladders.turn.yours')
   return t('ladders.turn.other', { name: nameOf(shownCurrent.value) })
 })
@@ -533,7 +534,8 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
       </aside>
     </main>
 
-    <div v-if="isOver" class="over-veil">
+    <!-- Held back until the winning token has finished its walk. -->
+    <div v-if="isOver && !animating" class="over-veil">
       <div class="over-card panel">
         <h2>{{ t('ladders.winner', { name: winner ?? '' }) }}</h2>
         <ol class="standings">
@@ -553,7 +555,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
       </div>
     </div>
 
-    <div v-if="game.isPaused && !isOver" class="over-veil">
+    <div v-if="game.isPaused && !isOver && !animating" class="over-veil">
       <div class="over-card panel">
         <strong>{{ t('game.paused.title') }}</strong>
         <p class="tiny muted">{{ t('game.paused.body') }}</p>
