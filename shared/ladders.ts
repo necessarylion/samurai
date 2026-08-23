@@ -68,16 +68,16 @@ export const PUSH_STEPS = 3
 
 /** How many of each power a board carries. */
 export const POWER_COUNTS: Readonly<Record<Power, number>> = {
-  sprint: 2,
-  slip: 2,
-  again: 1,
-  skip: 1,
+  sprint: 3,
+  slip: 3,
+  again: 2,
+  skip: 2,
   push: 2,
-  swap: 2,
+  swap: 3,
 }
 
-/** Gaps between two powers that would let one move you onto the other. */
-const POWER_GAPS = new Set([0, 1, 2, SPRINT_STEPS, SLIP_STEPS])
+/** Gaps between two powers that would let one move you onto the other, or sit side by side. */
+const POWER_GAPS = new Set([0, 1, SPRINT_STEPS, SLIP_STEPS])
 
 /** How often the power squares move while a game is running. */
 export const POWER_SHUFFLE_MS = 2 * 60 * 1000
