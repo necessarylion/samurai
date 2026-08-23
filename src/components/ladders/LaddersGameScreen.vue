@@ -121,15 +121,8 @@ function centre(n: number): [number, number] {
 }
 
 const SQUARES = Array.from({ length: LAST_SQUARE }, (_, i) => i + 1)
-/** Pastel board tiles — light enough that the dyed-cloth tokens stand off them. */
-const TILES = [
-  { fill: '#f6c8c2', ink: '#1c1613' }, // red
-  { fill: '#fffaf0', ink: '#1c1613' }, // paper
-  { fill: '#c9e8c6', ink: '#1c1613' }, // green
-  { fill: '#fbeeb0', ink: '#1c1613' }, // yellow
-  { fill: '#c6dcf5', ink: '#1c1613' }, // blue
-]
-const tileOf = (n: number) => TILES[(n + 2 * squareAt(n).row) % TILES.length]
+/** One paper tile for every square; the snakes, ladders and marks carry the colour. */
+const TILE = { fill: '#eadeca', ink: '#1c1613' }
 
 /** A snake image pinned head-to-tail between two squares. */
 interface Snake { from: number; to: number; art: SnakeArt; transform: string }
@@ -443,14 +436,14 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
               :y="centre(n)[1] - 0.5"
               width="1"
               height="1"
-              :fill="n === LAST_SQUARE ? '#f6c8c2' : tileOf(n).fill"
-              stroke="#1c1613"
-              stroke-width="0.03"
+              :fill="TILE.fill"
+              stroke="rgba(28, 22, 19, 0.45)"
+              stroke-width="0.025"
             />
             <text
               :x="centre(n)[0] - 0.42"
               :y="centre(n)[1] - 0.24"
-              :fill="tileOf(n).ink"
+              :fill="TILE.ink"
               class="num"
             >
               {{ n }}
