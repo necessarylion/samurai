@@ -11,7 +11,7 @@ const maxSeats = maxPlayersFor('ladders')
 const game = useGameStore()
 
 const seats = computed(() => game.ldPlayers)
-const POWER_LIST: Power[] = ['sprint', 'slip', 'again', 'skip', 'carry', 'swap']
+const POWER_LIST: Power[] = ['sprint', 'slip', 'again', 'skip', 'push', 'swap']
 const canStart = computed(() => game.isHost && seats.value.length >= MIN_PLAYERS)
 </script>
 

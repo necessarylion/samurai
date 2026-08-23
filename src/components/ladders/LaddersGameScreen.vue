@@ -71,7 +71,7 @@ const POWER_GLOW: Record<Power, string> = {
   slip: '#d9432f', // red — back
   again: '#e0a81c', // gold — a gift
   skip: '#6e6e6e', // grey — a turn lost
-  carry: '#2f7fd3', // blue — together
+  push: '#2f7fd3', // blue — a shove
   swap: '#8e44ad', // purple — a trade
 }
 

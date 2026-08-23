@@ -219,11 +219,10 @@ export const ICONS: Record<string, string> = {
     <path d="M4 7C4 5.58579 4 4.87868 4.43934 4.43934C4.87868 4 5.58579 4 7 4C8.41421 4 9.12132 4 9.56066 4.43934C10 4.87868 10 5.58579 10 7V17C10 18.4142 10 19.1213 9.56066 19.5607C9.12132 20 8.41421 20 7 20C5.58579 20 4.87868 20 4.43934 19.5607C4 19.1213 4 18.4142 4 17V7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M14 7C14 5.58579 14 4.87868 14.4393 4.43934C14.8787 4 15.5858 4 17 4C18.4142 4 19.1213 4 19.5607 4.43934C20 4.87868 20 5.58579 20 7V17C20 18.4142 20 19.1213 19.5607 19.5607C19.1213 20 18.4142 20 17 20C15.5858 20 14.8787 20 14.4393 19.5607C14 19.1213 14 18.4142 14 17V7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   `,
-  'ladders.carry': `
-    <path d="M16 21C15.7668 18.0685 13.3422 15.7477 10.3085 15.5521L9.49999 15.5C9.21121 15.5076 8.94209 15.5178 8.68816 15.5298C5.68124 15.6723 3.23089 18.0974 3 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M12.75 9.75C12.75 11.5449 11.2949 13 9.5 13C7.70508 13 6.25 11.5449 6.25 9.75C6.25 7.95507 7.70508 6.5 9.5 6.5C11.2949 6.5 12.75 7.95507 12.75 9.75Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M21 17.501C20.7709 14.6314 18.4541 12.2748 15.5 11.9961" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M15.9877 9C16.8965 8.42434 17.5001 7.40788 17.5001 6.25C17.5001 4.45507 16.0496 3 14.2602 3C13.3811 3 12.5838 3.35121 12.0001 3.92139" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  'ladders.push': `
+    <path d="M16.5841 6.05737C18.9187 6.05737 19.5461 9.24441 18.5423 11.3422C18.0933 12.2806 17.3165 13.1051 16.6946 13.9357C16.0982 14.7322 15.8 15.1304 15.408 15.4091C14.5339 16.0304 13.522 16 12.4897 16H11.4583C8.91929 16 7.64977 16 6.81095 15.2904C5.97214 14.5809 5.76679 13.3596 5.3561 10.917C5.13029 9.57401 4.97133 8.23222 5.00434 6.93135C5.06478 4.54904 6.8888 2.54273 9.35241 2.14874C10.526 1.96106 11.9711 1.94251 13.1454 2.14182C15.2422 2.49775 16.7207 4.30419 16.5741 6.33112C16.4847 7.56721 15.9831 8.83974 15.67 10.0344" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7.00391 15.5V18C7.00391 19.8856 7.00391 20.8284 7.58969 21.4142C8.17548 22 9.11829 22 11.0039 22H12.0039C13.8895 22 14.8323 22 15.4181 21.4142C16.0039 20.8284 16.0039 19.8856 16.0039 18V15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M7.00391 19H10.0039" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   `,
   'ladders.swap': `
     <path d="M19 9H6.65856C5.65277 9 5.14987 9 5.02472 8.69134C4.89957 8.38268 5.25517 8.01942 5.96637 7.29289L8.21091 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

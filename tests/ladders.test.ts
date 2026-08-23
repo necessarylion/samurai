@@ -11,8 +11,8 @@ const FIXED_POWERS: Record<number, Power> = {
   85: 'slip',
   36: 'again',
   78: 'skip',
-  22: 'carry',
-  68: 'carry',
+  22: 'push',
+  68: 'push',
   11: 'swap',
   60: 'swap',
 }
@@ -217,22 +217,26 @@ describe('rolling', () => {
     expect(game.state.players[0].skip).toBe(false)
   })
 
-  it('carries friends from the square it left, and swaps with the player ahead', () => {
+  it('shoves the leader back, and swaps with the player ahead', () => {
     const game = started(3)
     game.state.players[0].pos = 20
-    game.state.players[1].pos = 20
+    game.state.players[1].pos = 30
     game.state.players[2].pos = 70
     rollOf(game, 2)
-    game.roll(0) // 22: carry
-    expect(game.state.players[1].pos).toBe(22)
-    expect(game.state.lastRoll?.others).toEqual([{ player: 1, from: 20, to: 22 }])
+    game.roll(0) // 22: push — seat 2 leads at 70, back to 67
+    expect(game.state.players[2].pos).toBe(67)
+    expect(game.state.players[1].pos).toBe(30)
+    expect(game.state.lastRoll?.others).toEqual([{ player: 2, from: 70, to: 67 }])
+    game.state.players[2].pos = 70
 
     game.state.current = 1
+    game.state.players[0].pos = 65
     game.state.players[1].pos = 58
     rollOf(game, 2)
-    game.roll(1) // 60: swap with seat 2 at 70
+    game.roll(1) // 60: swap with the leader, seat 2 at 70 (not seat 0 at 65)
     expect(game.state.players[1].pos).toBe(70)
     expect(game.state.players[2].pos).toBe(60)
+    expect(game.state.players[0].pos).toBe(65)
     expect(game.state.lastRoll).toMatchObject({ landed: 60, to: 70, power: 'swap', others: [{ player: 2, from: 70, to: 60 }] })
   })
 

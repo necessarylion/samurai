@@ -51,8 +51,8 @@ export const isSnake = (from: number): boolean => (JUMPS[from] ?? from) < from
  * Power squares — a house rule, not part of the classic game. Landing on one
  * fires it at once: `sprint` and `slip` move you again (and a snake or ladder
  * where you stop still counts), `again` is an extra throw, `skip` costs your
- * next turn, `carry` brings everyone who was standing where you set off from
- * along to your square, and `swap` trades places with the player just ahead.
+ * next turn, `push` shoves the leading player back a few squares, and `swap`
+ * trades places with the leading player (when they are ahead of you).
  *
  * Where they sit is drawn per game from the `Rng`, so no two tables are alike,
  * and redrawn every `POWER_SHUFFLE_MS` while the game runs. One swap always
@@ -60,10 +60,11 @@ export const isSnake = (from: number): boolean => (JUMPS[from] ?? from) < from
  * no power square is the start or end of a jump, and the spacing keeps a sprint
  * or slip from landing on another power, so one landing fires at most one power.
  */
-export type Power = 'sprint' | 'slip' | 'again' | 'skip' | 'carry' | 'swap'
+export type Power = 'sprint' | 'slip' | 'again' | 'skip' | 'push' | 'swap'
 
 export const SPRINT_STEPS = 3
 export const SLIP_STEPS = 5
+export const PUSH_STEPS = 3
 
 /** How many of each power a board carries. */
 export const POWER_COUNTS: Readonly<Record<Power, number>> = {
@@ -71,7 +72,7 @@ export const POWER_COUNTS: Readonly<Record<Power, number>> = {
   slip: 2,
   again: 1,
   skip: 1,
-  carry: 2,
+  push: 2,
   swap: 2,
 }
 
@@ -268,24 +269,30 @@ export class LaddersGame {
     } else if (power === 'skip') {
       player.skip = true
       text += ' Will sit out the next turn.'
-    } else if (power === 'carry') {
-      for (const p of s.players) {
-        if (p.id !== playerId && p.pos === from && !s.standings.includes(p.id)) {
-          others.push({ player: p.id, from: p.pos, to })
-          p.pos = to
-        }
+    } else if (power === 'push') {
+      // The racer furthest up the board (not you) is shoved back; a snake or
+      // ladder where they land still counts for them.
+      const leader = s.players
+        .filter((p) => p.id !== playerId && p.pos > 0 && p.pos < LAST_SQUARE)
+        .sort((a, b) => b.pos - a.pos)[0]
+      if (leader) {
+        const back = Math.max(0, leader.pos - PUSH_STEPS)
+        const end = JUMPS[back] ?? back
+        others.push({ player: leader.id, from: leader.pos, to: end })
+        leader.pos = end
+        text += ` Shoves the leader back to ${end}.`
       }
-      if (others.length) text += ` Carries ${others.length} friend${others.length > 1 ? 's' : ''} along.`
     } else if (power === 'swap') {
-      const ahead = s.players
+      // Trade places with whoever leads the race — if that is ahead of you.
+      const leader = s.players
         .filter((p) => p.id !== playerId && p.pos > to && p.pos < LAST_SQUARE)
-        .sort((a, b) => a.pos - b.pos)[0]
-      if (ahead) {
-        others.push({ player: ahead.id, from: ahead.pos, to })
-        const there = ahead.pos
-        ahead.pos = to
+        .sort((a, b) => b.pos - a.pos)[0]
+      if (leader) {
+        others.push({ player: leader.id, from: leader.pos, to })
+        const there = leader.pos
+        leader.pos = to
         to = there
-        text += ` Swaps places with the player ahead, up to ${to}.`
+        text += ` Swaps places with the leader, up to ${to}.`
       }
     }
     // `via` ends where the token does, unless nothing followed the landing.
