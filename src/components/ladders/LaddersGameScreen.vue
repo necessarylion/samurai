@@ -412,7 +412,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
       </aside>
 
       <div ref="boardWrap" class="board-wrap">
-        <svg class="board" :viewBox="`${-LANE} 0 ${BOARD_SIDE + LANE} ${BOARD_SIDE}`">
+        <svg class="board" :class="{ busy: animating }" :viewBox="`${-LANE} 0 ${BOARD_SIDE + LANE} ${BOARD_SIDE}`">
           <defs>
             <!-- One cloth per colour, the photograph Samurai's tiles wear, under
                  a flat fill so a tile still has its colour before the image loads. -->
@@ -499,6 +499,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
             <!-- A tile with some depth: a contact shadow, a darker extruded
                  base, then the cloth face with its ink border and pale bevel. -->
             <ellipse class="shadow" cx="0.03" cy="0.14" rx="0.32" ry="0.14" />
+            <circle v-if="p.id === shownCurrent && !isOver" class="glow" r="0.42" />
             <path :d="TOKEN_HEX" :fill="PLAYER_COLOURS[p.colour].ink" transform="translate(0 0.09)" />
             <path
               class="face"
@@ -669,25 +670,27 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
   fill: rgba(255, 250, 240, 0.92);
   stroke: var(--glow);
   stroke-width: 0.035;
-  filter: drop-shadow(0 0 0.03px var(--glow));
 }
 
+/* Opacity only, and paused while a throw replays: the board must not be
+   repainting halos at the same time as the die is rendering. */
 .power .halo {
   fill: var(--glow);
-  transform-box: fill-box;
-  transform-origin: center;
   animation: glow 1.8s ease-in-out infinite;
+}
+
+.board.busy .halo,
+.board.busy .token .glow {
+  animation-play-state: paused;
 }
 
 @keyframes glow {
   0%,
   100% {
     opacity: 0.08;
-    transform: scale(0.9);
   }
   50% {
-    opacity: 0.26;
-    transform: scale(1.05);
+    opacity: 0.28;
   }
 }
 
@@ -712,9 +715,6 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
   fill: none;
 }
 
-.snake image {
-  filter: drop-shadow(0 0.04px 0.05px rgba(0, 0, 0, 0.35));
-}
 
 .token {
   transition: transform 0.32s ease;
@@ -730,34 +730,35 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
 }
 
 .token .shadow {
-  fill: rgba(0, 0, 0, 0.35);
-  filter: blur(0.04px);
+  fill: rgba(0, 0, 0, 0.3);
+}
+
+/* Opacity only: animating a filter re-rasterises the whole board every frame. */
+.token .glow {
+  fill: rgba(178, 58, 44, 0.55);
+  animation: token-glow 1.6s ease-in-out infinite;
 }
 
 /* The same tile as the sidebar's seat marker: ink border, pale bevel, and the
-   seat on turn pulsing the same warm glow. */
+   seat on turn pulsing the same warm glow (a halo under the tile). */
 .token .face {
   stroke-width: 0.035;
-}
-
-.token.current {
-  animation: token-glow 1.6s ease-in-out infinite;
 }
 
 @keyframes token-glow {
   0%,
   100% {
-    filter: drop-shadow(0 0 0.02px rgba(178, 58, 44, 0.25));
+    opacity: 0.15;
   }
   50% {
-    filter: drop-shadow(0 0 0.14px rgba(178, 58, 44, 0.95));
+    opacity: 0.8;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .token.current {
+  .token .glow {
     animation: none;
-    filter: drop-shadow(0 0 0.08px rgba(178, 58, 44, 0.8));
+    opacity: 0.5;
   }
 }
 

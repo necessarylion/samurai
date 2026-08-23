@@ -122,7 +122,7 @@ type Throw = { frames: { p: CANNON.Vec3; q: CANNON.Quaternion }[]; upSlot: numbe
 /** Throw until the tumble lasts long enough to fill the roll; keep the longest otherwise. */
 function simulate(): Throw {
   let best: Throw | null = null
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const t = simulateOnce(1 + attempt * 0.25)
     if (t.frames.length >= MIN_FRAMES) return t
     if (!best || t.frames.length > best.frames.length) best = t
@@ -240,10 +240,12 @@ onMounted(() => {
     // No WebGL (a test runner, an old browser): the tray simply shows no die.
     return
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  // A small canvas does not need a retina buffer or soft shadows; both are
+  // what made a roll stutter on phones.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
   renderer.setSize(props.size, props.size, false)
   renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.type = THREE.PCFShadowMap
 
   scene = new THREE.Scene()
   camera = new THREE.PerspectiveCamera(38, 1, 0.1, 50)
@@ -254,7 +256,7 @@ onMounted(() => {
   const sun = new THREE.DirectionalLight(0xffffff, 2.2)
   sun.position.set(3, 8, 4)
   sun.castShadow = true
-  sun.shadow.mapSize.set(1024, 1024)
+  sun.shadow.mapSize.set(512, 512)
   scene.add(sun)
 
   // The die casts onto an otherwise invisible floor, so the tumble reads as
@@ -265,7 +267,7 @@ onMounted(() => {
   scene.add(floor)
 
   materials = AXES.map(() => new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.05 }))
-  die = new THREE.Mesh(new RoundedBoxGeometry(DIE, DIE, DIE, 4, 0.14), materials)
+  die = new THREE.Mesh(new RoundedBoxGeometry(DIE, DIE, DIE, 3, 0.14), materials)
   die.castShadow = true
   scene.add(die)
 
