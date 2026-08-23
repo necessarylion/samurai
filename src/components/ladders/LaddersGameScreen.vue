@@ -178,8 +178,8 @@ const ladders = computed<Ladder[]>(() =>
       const dx = x1 - x0
       const dy = y1 - y0
       const len = Math.hypot(dx, dy) || 1
-      const px = (-dy / len) * 0.17
-      const py = (dx / len) * 0.17
+      const px = (-dy / len) * 0.13
+      const py = (dx / len) * 0.13
       const rails: [string, string] = [
         `M ${x0 + px} ${y0 + py} L ${x1 + px} ${y1 + py}`,
         `M ${x0 - px} ${y0 - py} L ${x1 - px} ${y1 - py}`,
@@ -707,14 +707,14 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
 
 .ladder .rail {
   stroke: #2b2118;
-  stroke-width: 0.08;
+  stroke-width: 0.055;
   stroke-linecap: round;
   fill: none;
 }
 
 .ladder .rung {
   stroke: #2b2118;
-  stroke-width: 0.06;
+  stroke-width: 0.045;
   stroke-linecap: round;
   fill: none;
 }
