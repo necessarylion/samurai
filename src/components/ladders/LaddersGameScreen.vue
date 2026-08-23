@@ -156,7 +156,10 @@ function snakeGeometry(from: number, to: number, i: number): Snake {
   return { from, to, art, transform }
 }
 
-interface Ladder { from: number; to: number; rails: [string, string]; rungs: string[] }
+interface Ladder { from: number; to: number; rails: [string, string]; rungs: string[]; ink: string }
+
+/** Painted ladders, one tone each, so they tell apart where two cross. */
+const LADDER_INKS = ['#8a5a2b', '#b23a2c', '#2f6f86', '#5a7d2a', '#6b4b9c', '#c8632a', '#3d4a9c', '#a8336f']
 
 const fmt = (n: number) => n.toFixed(3)
 
@@ -172,7 +175,7 @@ const ladders = computed<Ladder[]>(() =>
   Object.entries(JUMPS)
     .map(([f, to]) => [Number(f), to] as const)
     .filter(([f]) => !isSnake(f))
-    .map(([from, to]) => {
+    .map(([from, to], i) => {
       const [x0, y0] = centre(from)
       const [x1, y1] = centre(to)
       const dx = x1 - x0
@@ -190,7 +193,7 @@ const ladders = computed<Ladder[]>(() =>
         const cy = y0 + (dy * s) / len
         rungs.push(`M ${cx + px} ${cy + py} L ${cx - px} ${cy - py}`)
       }
-      return { from, to, rails, rungs }
+      return { from, to, rails, rungs, ink: LADDER_INKS[i % LADDER_INKS.length] }
     }),
 )
 
@@ -464,7 +467,7 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
           </g>
 
           <!-- Ladders -->
-          <g v-for="l in ladders" :key="`l${l.from}`" class="ladder">
+          <g v-for="l in ladders" :key="`l${l.from}`" class="ladder" :stroke="l.ink">
             <path v-for="(r, i) in l.rails" :key="i" :d="r" class="rail" />
             <path v-for="(r, i) in l.rungs" :key="`r${i}`" :d="r" class="rung" />
           </g>
@@ -706,14 +709,12 @@ const seatClothId = (colour: string) => `ladders-seat-cloth-${colour}`
 }
 
 .ladder .rail {
-  stroke: #2b2118;
   stroke-width: 0.055;
   stroke-linecap: round;
   fill: none;
 }
 
 .ladder .rung {
-  stroke: #2b2118;
   stroke-width: 0.045;
   stroke-linecap: round;
   fill: none;
