@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import mainBackground from '../../../assets/mainbg.png'
 import { COLOUR_ORDER, PLAYER_COLOURS } from '@shared/colours'
 import type { GameKind, PlayerColour } from '@shared/types'
+import { GAME_ART } from '@/game/artwork'
 import { t } from '@/i18n'
 import { useGameStore } from '@/stores/game'
 
@@ -57,10 +57,11 @@ async function copyLink() {
 <template>
   <div class="lobby-split" :class="kind">
     <aside class="side">
-      <!-- Samurai brings artwork; the wash keeps the seats and code legible
-           over it. The other games paint their gradient instead. -->
-      <img v-if="kind === 'samurai'" class="side-art" :src="mainBackground" alt="" />
-      <div v-if="kind === 'samurai'" class="side-wash"></div>
+      <!-- Every game brings its own painting; the wash keeps the seats and
+           code legible over it, and the gradient underneath is what shows
+           until the image arrives. -->
+      <img class="side-art" :src="GAME_ART[kind]" alt="" />
+      <div class="side-wash"></div>
       <span class="watermark" aria-hidden="true">{{ GLYPHS[kind] }}</span>
       <div class="side-scroll">
         <div class="side-inner">
@@ -188,8 +189,8 @@ async function copyLink() {
   color: #f6ece0;
 }
 
-/* Anchored right of centre like the home screen, so the standing figure stays
-   in frame at every width. */
+/* Anchored right of centre like the home screen, so each painting's subject
+   stays in frame at every width. */
 .side-art {
   position: absolute;
   inset: 0;

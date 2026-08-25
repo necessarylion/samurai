@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import mainBackground from '../../../assets/mainbg.png'
 import BoardGlyph from '../samurai/BoardGlyph.vue'
 import GameIcon from './GameIcon.vue'
 import TurnClockOptions from './TurnClockOptions.vue'
 import { DEFAULT_OPTIONS } from '@shared/engine'
 import { BOARD_SHAPES } from '@shared/types'
 import LanguageMenu from '@/i18n/LanguageMenu.vue'
+import { GAME_ART } from '@/game/artwork'
 import { t } from '@/i18n'
 import { useGameStore } from '@/stores/game'
 
@@ -83,7 +83,7 @@ function join() {
       class="art"
       :class="{ halli: kind === 'halligalli', coup: kind === 'coup', carnivals: kind === 'carnivals', cop: kind === 'cop', snake: kind === 'snake', ladders: kind === 'ladders' }"
     >
-      <img v-if="isSamurai" class="art-image" :src="mainBackground" alt="" />
+      <img class="art-image" :src="GAME_ART[kind]" alt="" />
       <div class="art-wash"></div>
       <header class="masthead">
         <span
@@ -256,7 +256,8 @@ function join() {
   min-height: 22rem;
 }
 
-/* The card games ship no artwork, so their column is a wash instead of a crop. */
+/* The gradient sits under the painting, so it is what shows while the image
+   is still on its way. */
 .art.halli {
   background: linear-gradient(160deg, #b23a2c 0%, #d98a3d 60%, #e7c15c 100%);
 }
@@ -290,9 +291,9 @@ function join() {
   line-height: 1.5;
 }
 
-/* The painting is a wide landscape dropped into a tall column, so it has to be
-   cropped. Anchoring right of centre keeps the standing figure in frame at
-   every width instead of letting him slide off the edge. */
+/* Every painting is a wide landscape dropped into a tall column, so it has to
+   be cropped. Anchoring right of centre keeps each one's subject in frame at
+   every width instead of letting it slide off the edge. */
 .art-image {
   position: absolute;
   inset: 0;
