@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { COLOUR_ORDER } from '../shared/colours'
 import { DEFAULT_OPTIONS } from '../shared/engine'
-import { Room } from '../server/rooms'
+import { Room, RoomManager } from '../server/rooms'
 import type { ClientState } from '../shared/protocol'
 import { MAX_PLAYERS } from '../shared/types'
 
@@ -169,5 +169,48 @@ describe('team play', () => {
 
     const solo = teamRoom(4, 0)
     expect(solo.renameTeam('token-0', 0, 'Dragons')).not.toBeNull()
+  })
+})
+
+describe('a player who moves to another table', () => {
+  /** What the create/join handlers do when someone leaves for a new table. */
+  function moveTo(mgr: RoomManager, token: string, to: Room) {
+    mgr.roomOf(token)?.removeSeat(token)
+    to.addSeat(token, 'Ada')
+    mgr.bind(token, to)
+  }
+
+  it('is no longer a recipient of the room they left, even though it kept their seat', () => {
+    const mgr = new RoomManager()
+    const old = mgr.create()
+    old.options = { ...DEFAULT_OPTIONS, kind: 'ladders' }
+    old.addSeat('token-a', 'Ada')
+    old.addSeat('token-b', 'Bo')
+    mgr.bind('token-a', old)
+    mgr.bind('token-b', old)
+    old.start()
+
+    const fresh = mgr.create()
+    moveTo(mgr, 'token-a', fresh)
+
+    // A started room keeps the seat, which is what used to flash the old game
+    // onto their screen every time it broadcast.
+    expect(old.seatByToken('token-a')).toBeDefined()
+    expect(mgr.roomOf('token-a')).toBe(fresh)
+    expect(mgr.roomOf('token-b')).toBe(old)
+  })
+
+  it('keeps its binding to the new table when the old one is swept away', () => {
+    const mgr = new RoomManager()
+    const old = mgr.create()
+    old.addSeat('token-a', 'Ada')
+    mgr.bind('token-a', old)
+    const fresh = mgr.create()
+    moveTo(mgr, 'token-a', fresh)
+
+    old.lastActivity = 0 // long past the room TTL, so the sweep drops it
+    mgr.sweep()
+    expect(mgr.get(old.code)).toBeUndefined()
+    expect(mgr.roomOf('token-a')).toBe(fresh)
   })
 })

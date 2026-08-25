@@ -1395,8 +1395,12 @@ export class RoomManager {
     for (const [code, room] of this.rooms) {
       const empty = room.seats.every((s) => !s.connected)
       if (room.expired || (empty && Date.now() - room.lastActivity > EMPTY_ROOM_TTL_MS)) {
-        for (const token of room.members) this.membership.delete(token)
-        for (const seat of room.seats) this.membership.delete(seat.token)
+        // Only the entries still pointing here: a player who moved on to
+        // another table is listed by both rooms, and sweeping the old one must
+        // not unbind them from the one they are actually playing at.
+        for (const token of [...room.members, ...room.seats.map((s) => s.token)]) {
+          if (this.membership.get(token) === code) this.membership.delete(token)
+        }
         this.rooms.delete(code)
         this.markDeleted(code)
       }

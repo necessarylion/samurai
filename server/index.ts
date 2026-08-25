@@ -88,6 +88,11 @@ function fail(socket: WebSocket, message: string) {
 function broadcast(room: Room, exceptToken?: string) {
   for (const seat of room.seats) {
     if (seat.token === exceptToken) continue
+    // A seat is kept once the game has started even when its player walks out,
+    // so a room in play still names tokens that have since moved to another
+    // table. Their socket is very much alive, and sending it this room's state
+    // drops the old game onto their screen until the new table corrects it.
+    if (rooms.roomOf(seat.token) !== room) continue
     const socket = sockets.get(seat.token)
     if (socket) send(socket, { t: 'state', state: room.stateFor(seat.token) })
   }
