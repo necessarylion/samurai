@@ -21,6 +21,23 @@ export interface PanZoomOptions {
    * real pan is tens of pixels; a misread click has no such margin.
    */
   dragThreshold?: number
+  /**
+   * The smallest one content unit may be drawn at, in screen pixels, when the
+   * view is reset.
+   *
+   * Fitting a whole board into a phone leaves each hex a dozen pixels across —
+   * legible, but far too small for a fingertip to pick one out of six — so a
+   * cramped viewport opens zoomed past the fit instead. Zero, the default,
+   * means the fit always wins, which is what any roomy container wants.
+   */
+  minUnitPx?: number
+  /**
+   * How far a reset may zoom past the fit to honour `minUnitPx`. Opening at
+   * whatever zoom the hexes demand would show a corner of a six-player board
+   * and nothing else, which is a worse first view than a small one; past this
+   * the rest is left to the player's own pinch.
+   */
+  maxOpenZoom?: number
 }
 
 /**
@@ -39,6 +56,9 @@ export function usePanZoom(
   const MIN = options.min ?? 1
   const MAX = options.max ?? 6
   const DRAG_THRESHOLD = options.dragThreshold ?? 10
+  const MIN_UNIT_PX = options.minUnitPx ?? 0
+  /** Never below `MIN`: the cap bounds a zoom in, it cannot force one out. */
+  const MAX_OPEN = Math.max(options.maxOpenZoom ?? MIN, MIN)
 
   // Seeded with a sensible shape so the first render is correct even before the
   // element has been measured (and under test runners with no layout).
@@ -83,8 +103,37 @@ export function usePanZoom(
     return { x: c.x + c.width / 2, y: c.y + c.height / 2 }
   }
 
+  /** The zoom at which one content unit is drawn `px` screen pixels across. */
+  function zoomForUnit(px: number) {
+    const unitPx = Math.max(size.value.width, 1) / Math.max(fitted.value.width, 1)
+    return px / unitPx
+  }
+
+  /**
+   * The zoom a fresh view opens at: the fit, unless that would draw the content
+   * too small to touch, in which case as much of the difference as the cap
+   * allows. With no `minUnitPx` this is always the fit.
+   */
+  function openZoom() {
+    if (MIN_UNIT_PX <= 0) return MIN
+    return Math.min(Math.max(zoomForUnit(MIN_UNIT_PX), MIN), MAX, MAX_OPEN)
+  }
+
+  /**
+   * Put a content point in the middle of the view, zoomed in far enough to make
+   * out what is there — for showing something the player would otherwise have
+   * to go hunting for. Never zooms *out*: someone already looking closer than
+   * asked keeps the closer look.
+   */
+  function focusOn(point: { x: number; y: number }, minUnitPx = 0) {
+    const wanted = minUnitPx > 0 ? zoomForUnit(minUnitPx) : MIN
+    zoom.value = Math.min(Math.max(zoom.value, wanted, MIN), MAX)
+    centre.value = { x: point.x, y: point.y }
+    clampCentre()
+  }
+
   function reset() {
-    zoom.value = 1
+    zoom.value = openZoom()
     centre.value = contentCentre()
   }
 
@@ -251,11 +300,23 @@ export function usePanZoom(
   // --- sizing --------------------------------------------------------------
 
   let observer: ResizeObserver | null = null
+  /**
+   * Whether the container has ever been measured. Until it has, `size` is the
+   * seeded guess above — and an opening zoom read off a guessed desktop-shaped
+   * box is exactly the wrong one for the phone that is actually there. So the
+   * first real measurement reframes; later ones (a resize, a rotation) leave
+   * the view where the player put it.
+   */
+  let framed = false
 
   function measure() {
     const rect = container.value?.getBoundingClientRect()
     if (rect && rect.width >= 1 && rect.height >= 1) {
       size.value = { width: rect.width, height: rect.height }
+      if (!framed) {
+        framed = true
+        reset()
+      }
     }
   }
 
@@ -284,6 +345,7 @@ export function usePanZoom(
     canZoomIn,
     canZoomOut,
     reset,
+    focusOn,
     zoomIn: () => zoomBy(1.35),
     zoomOut: () => zoomBy(1 / 1.35),
     handlers: {

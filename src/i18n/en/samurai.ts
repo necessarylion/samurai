@@ -155,10 +155,13 @@ export const enSamurai = {
   'board.zoomOut': 'Zoom out',
   'board.fit': 'Fit the whole board',
   'board.fitShort': 'Fit',
+  'board.fullscreen': 'Full screen',
+  'board.exitFullscreen': 'Leave full screen',
 
   // --- hand bar ------------------------------------------------------------
   'hand.title': 'Your hand',
   'hand.stackLeft': '· {count} left in your stack',
+  'hand.claimed': 'Claimed',
   'hand.waitingFor': 'Waiting for {name} to play.',
   'hand.waiting': 'Waiting…',
   'hand.prompt.place': 'Choose a highlighted space to place the tile.',
@@ -189,6 +192,10 @@ export const enSamurai = {
   'panel.hiddenCaptured': 'Captured pieces kept behind their screen.',
 
   // --- play log ------------------------------------------------------------
+  // --- move ticker (narrow screens) ----------------------------------------
+  'ticker.open': 'Open the play log',
+  'ticker.locate': 'Show the last move on the board',
+
   'log.title': 'Play log',
   'log.empty': 'Nothing has happened yet.',
 

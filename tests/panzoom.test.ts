@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 
-import { usePanZoom, type Bounds } from '../src/composables/usePanZoom'
+import { usePanZoom, type Bounds, type PanZoomOptions } from '../src/composables/usePanZoom'
 
 // The container is deliberately a different shape from the board, so the
 // "no letterboxing" behaviour is actually exercised.
@@ -29,13 +29,30 @@ function parse(viewBox: string) {
   return { x, y, width, height }
 }
 
+/** Every element reports this box; call before mounting, as the composable
+    measures on mount. */
+function sizeContainer(width: number, height: number) {
+  Element.prototype.getBoundingClientRect = () =>
+    ({
+      left: 0,
+      top: 0,
+      width,
+      height,
+      right: width,
+      bottom: height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect
+}
+
 /** Mount the composable against an element with a known, fixed size. */
-function harness(content: Bounds = CONTENT) {
+function harness(content: Bounds = CONTENT, options: PanZoomOptions = {}) {
   let api!: ReturnType<typeof usePanZoom>
   const component = defineComponent({
     setup() {
       const frame = ref<HTMLElement | null>(null)
-      api = usePanZoom(frame, ref(content))
+      api = usePanZoom(frame, ref(content), options)
       return () => h('div', { ref: frame })
     },
   })
@@ -273,5 +290,54 @@ describe('board pan and zoom', () => {
     expect(view.x + view.width).toBeGreaterThan(CONTENT.x)
     expect(view.y).toBeLessThan(CONTENT.y + CONTENT.height)
     expect(view.y + view.height).toBeGreaterThan(CONTENT.y)
+  })
+})
+
+/*
+ * What a board does when the screen it opens on is too small to show it at a
+ * size a fingertip can pick a space out of. The content unit here stands in for
+ * a hex: `minUnitPx` is how many screen pixels one of them must be worth.
+ */
+describe('opening on a screen too small to fit the board legibly', () => {
+  it('opens zoomed past the fit when a unit would otherwise be too small', () => {
+    // 320px of screen across 400 units of board: 0.8px a unit, where 1 is asked.
+    sizeContainer(320, 340)
+    const { api } = harness(CONTENT, { minUnitPx: 1, maxOpenZoom: 1.8 })
+
+    expect(api.zoom.value).toBeCloseTo(1.25, 4)
+    // Zoomed in, so the board can still be zoomed back out to the whole of it.
+    expect(api.canZoomOut.value).toBe(true)
+  })
+
+  it('will not open so far in that the board is mostly off screen', () => {
+    sizeContainer(320, 340)
+    const { api } = harness(CONTENT, { minUnitPx: 2, maxOpenZoom: 1.8 })
+
+    // 2px a unit would want 2.5x; the cap is what the view actually opens at.
+    expect(api.zoom.value).toBeCloseTo(1.8, 4)
+  })
+
+  it('leaves a roomy container at the plain fit', () => {
+    // The default 900x600 frame draws this board at 2px a unit already.
+    const { api } = harness(CONTENT, { minUnitPx: 1, maxOpenZoom: 1.8 })
+
+    expect(api.zoom.value).toBe(1)
+    expect(api.canZoomOut.value).toBe(false)
+  })
+
+  it('reads the opening zoom off the real container, not the seeded guess', () => {
+    sizeContainer(320, 340)
+    const { api } = harness(CONTENT, { minUnitPx: 1, maxOpenZoom: 1.8 })
+
+    // The seeded size is a desktop-shaped 1000x700, which would have opened at
+    // the fit; the measurement on mount is what has to decide instead.
+    expect(api.zoom.value).toBeGreaterThan(1)
+  })
+
+  it('is off by default, so a board that asks for nothing opens fitted', () => {
+    sizeContainer(320, 340)
+    const { api } = harness()
+
+    expect(api.zoom.value).toBe(1)
   })
 })

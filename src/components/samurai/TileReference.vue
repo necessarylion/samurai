@@ -143,7 +143,9 @@ h4:first-child {
 .tiles {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* `min(16rem, 100%)` rather than a flat 16rem: below that the track would
+     keep its width and push the card off the side of a phone. */
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
   gap: 0.35rem 1.1rem;
 }
 

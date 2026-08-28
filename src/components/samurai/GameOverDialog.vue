@@ -155,67 +155,74 @@ onUnmounted(stopVolleys)
       <!-- The reason is worded by the shared engine, so it stays in English. -->
       <p class="reason">{{ result.reason }}</p>
 
-      <table v-if="isTeam" class="scores">
-        <thead>
-          <tr>
-            <th>{{ t('over.teamCol') }}</th>
-            <th v-for="caste in CASTES" :key="caste" :title="casteName(caste)">
-              <GameIcon :name="caste" :size="17" />
-              <span class="sr">{{ castePiece(caste) }}</span>
-            </th>
-            <th>{{ t('over.leaderTokens') }}</th>
-            <th>{{ t('over.total') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in teamRows" :key="row.tb.team" :class="{ winner: row.won }">
-            <td class="who">
-              <span class="team-tag" :class="`team-${row.tb.team}`">{{ teamLabel(row.tb.team, game.teamNames) }}</span>
-              <span class="members tiny muted">{{ row.members.map((m) => m.name).join(', ') }}</span>
-            </td>
-            <td v-for="caste in CASTES" :key="caste" class="num">
-              {{ row.tb.counts[caste] }}
-              <span v-if="row.tb.leaderTokens.includes(caste)" class="token" :title="t('over.leader')">*</span>
-            </td>
-            <td class="num">{{ row.tb.leaderTokens.length }}</td>
-            <td class="num total">{{ row.tb.totalPieces }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <!-- Six columns do not fit a phone. The table scrolls sideways inside its
+           own box rather than making the dialog itself pan. -->
+      <div v-if="isTeam" class="score-wrap">
+        <table class="scores">
+          <thead>
+            <tr>
+              <th>{{ t('over.teamCol') }}</th>
+              <th v-for="caste in CASTES" :key="caste" :title="casteName(caste)">
+                <GameIcon :name="caste" :size="17" />
+                <span class="sr">{{ castePiece(caste) }}</span>
+              </th>
+              <th>{{ t('over.leaderTokens') }}</th>
+              <th>{{ t('over.total') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in teamRows" :key="row.tb.team" :class="{ winner: row.won }">
+              <td class="who">
+                <span class="team-tag" :class="`team-${row.tb.team}`">{{ teamLabel(row.tb.team, game.teamNames) }}</span>
+                <span class="members tiny muted">{{ row.members.map((m) => m.name).join(', ') }}</span>
+              </td>
+              <td v-for="caste in CASTES" :key="caste" class="num">
+                {{ row.tb.counts[caste] }}
+                <span v-if="row.tb.leaderTokens.includes(caste)" class="token" :title="t('over.leader')">*</span>
+              </td>
+              <td class="num">{{ row.tb.leaderTokens.length }}</td>
+              <td class="num total">{{ row.tb.totalPieces }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-      <table v-else class="scores">
-        <thead>
-          <tr>
-            <th>{{ t('over.player') }}</th>
-            <th v-for="caste in CASTES" :key="caste" :title="casteName(caste)">
-              <GameIcon :name="caste" :size="17" />
-              <span class="sr">{{ castePiece(caste) }}</span>
-            </th>
-            <th>{{ t('over.leaderTokens') }}</th>
-            <th>{{ t('over.total') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.entry.playerId" :class="{ winner: row.won }">
-            <td class="who">
-              <span
-                class="swatch"
-                :style="{
-                  background: PLAYER_COLOURS[row.player.colour].fill,
-                  borderColor: PLAYER_COLOURS[row.player.colour].ink,
-                }"
-              />
-              {{ row.player.name }}
-            </td>
-            <td v-for="caste in CASTES" :key="caste" class="num">
-              {{ row.entry.counts[caste] }}
-              <span v-if="row.entry.leaderTokens.includes(caste)" class="token" :title="t('over.leader')">*</span>
-            </td>
-            <td class="num">{{ row.entry.leaderTokens.length }}</td>
-            <td class="num total">{{ row.entry.totalPieces }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else class="score-wrap">
+        <table class="scores">
+          <thead>
+            <tr>
+              <th>{{ t('over.player') }}</th>
+              <th v-for="caste in CASTES" :key="caste" :title="casteName(caste)">
+                <GameIcon :name="caste" :size="17" />
+                <span class="sr">{{ castePiece(caste) }}</span>
+              </th>
+              <th>{{ t('over.leaderTokens') }}</th>
+              <th>{{ t('over.total') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.entry.playerId" :class="{ winner: row.won }">
+              <td class="who">
+                <span
+                  class="swatch"
+                  :style="{
+                    background: PLAYER_COLOURS[row.player.colour].fill,
+                    borderColor: PLAYER_COLOURS[row.player.colour].ink,
+                  }"
+                />
+                {{ row.player.name }}
+              </td>
+              <td v-for="caste in CASTES" :key="caste" class="num">
+                {{ row.entry.counts[caste] }}
+                <span v-if="row.entry.leaderTokens.includes(caste)" class="token" :title="t('over.leader')">*</span>
+              </td>
+              <td class="num">{{ row.entry.leaderTokens.length }}</td>
+              <td class="num total">{{ row.entry.totalPieces }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+      </div>
 
       <p v-if="result.unclaimed.length" class="tiny muted">
         {{ t('over.unclaimed', { castes: result.unclaimed.map(casteName).join(', ') }) }}
@@ -349,10 +356,17 @@ h1 {
   }
 }
 
+.score-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  margin-bottom: 0.85rem;
+}
+
 .scores {
   width: 100%;
+  /* Narrower than this the columns start colliding, so it scrolls instead. */
+  min-width: 20rem;
   border-collapse: collapse;
-  margin-bottom: 0.85rem;
   font-size: 0.92rem;
 }
 
@@ -463,6 +477,38 @@ h1 {
     opacity: 0.4;
     transform: scale(2.4);
     animation: none;
+  }
+}
+
+/* See RulesDialog: fixed, so the notch is this dialog's own problem. */
+@media (max-width: 46rem) {
+  .backdrop {
+    padding: max(0.6rem, env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right))
+      max(0.6rem, env(safe-area-inset-bottom)) max(0.6rem, env(safe-area-inset-left));
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 100%;
+    padding: 1.1rem 0.9rem 1.2rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  .triumph {
+    font-size: 1.8rem;
+  }
+
+  .scores th,
+  .scores td {
+    padding: 0.35rem 0.4rem;
+  }
+
+  /* Two full-width rows rather than three buttons crammed onto one. */
+  .actions .btn {
+    flex: 1 1 9rem;
   }
 }
 </style>

@@ -185,8 +185,12 @@ h1 {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
-.tile-btn:hover {
-  transform: translateY(-3px);
+/* Guarded: a touch browser keeps the hover on the last tile tapped, which would
+   leave it raised alongside the tiles actually picked. */
+@media (hover: hover) {
+  .tile-btn:hover {
+    transform: translateY(-3px);
+  }
 }
 
 .tile-btn.picked {
@@ -239,6 +243,64 @@ h1 {
 
   .head p {
     font-size: 0.85rem;
+  }
+}
+
+/* --- narrow screens ------------------------------------------------------- */
+
+/*
+ * Stacked, with the chooser first: the two columns are 160px each on a phone,
+ * which is narrower than one card of the reference. The screen scrolls as one
+ * (App.vue gives it the scrollbar), so neither half keeps a scroll box of its
+ * own — a pane that scrolls inside a page that also scrolls is a trap on a
+ * touch screen.
+ */
+@media (max-width: 52rem) {
+  .draft {
+    grid-template-columns: 1fr;
+    /* Content-sized rows that the screen scrolls past, rather than two halves
+       sharing one screenful. */
+    height: auto;
+    /* Each half brings its own padding; the short-window rule above adds a
+       second helping this layout has no room for. */
+    padding: 0;
+  }
+
+  .picker {
+    order: -1;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    border-left: 0;
+    border-bottom: 1px solid rgba(160, 137, 102, 0.35);
+    padding: clamp(0.75rem, 3.5vw, 1.5rem);
+  }
+
+  /* In the flow rather than floating over the tiles: there is no spare corner
+     on a phone for it to float in. */
+  .bar {
+    position: static;
+    align-self: flex-end;
+    margin-bottom: 0.5rem;
+  }
+
+  .tiles {
+    overflow-y: visible;
+    grid-template-columns: repeat(auto-fit, minmax(5.4rem, 1fr));
+  }
+
+  .guide {
+    display: block;
+    overflow-y: visible;
+    padding: clamp(1rem, 4vw, 2rem) clamp(0.9rem, 3.5vw, 2rem);
+  }
+
+  .buttons {
+    flex: 1 1 auto;
+  }
+
+  .buttons .btn {
+    flex: 1 1 auto;
   }
 }
 </style>

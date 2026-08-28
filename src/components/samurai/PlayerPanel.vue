@@ -389,4 +389,21 @@ h3 {
   font-family: var(--font-display);
   font-size: 0.8rem;
 }
+
+/* In the sheet a phone summons this into, the rows are read at arm's length and
+   the panel is not competing with the board for width — so the names come back
+   up to body size and the rows to a comfortable height. */
+@media (max-width: 900px) {
+  .player {
+    padding: 0.45rem 0.7rem;
+  }
+
+  .player-name {
+    font-size: 0.92rem;
+  }
+
+  .block {
+    padding: 0.7rem;
+  }
+}
 </style>
