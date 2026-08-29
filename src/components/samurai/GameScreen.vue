@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import BoardView from './BoardView.vue'
 import GameIcon from '../common/GameIcon.vue'
 import CaptureDialog from './CaptureDialog.vue'
 import GameOverDialog from './GameOverDialog.vue'
 import HandBar from './HandBar.vue'
 import LogPanel from '../common/LogPanel.vue'
+import MoveTicker from './MoveTicker.vue'
 import PlayerPanel from './PlayerPanel.vue'
 import RulesDialog from './RulesDialog.vue'
 import TableMenu from '../common/TableMenu.vue'
@@ -19,8 +20,45 @@ import { useGameStore } from '@/stores/game'
 
 const game = useGameStore()
 const showRules = ref(false)
+
+/**
+ * Below this the sidebar stops being a column beside the board and becomes a
+ * sheet over it. Stacking it under the board — what this used to do — left a
+ * phone with a board a few hexes tall, because the topbar, the hand and a panel
+ * are already most of a 568px screen; the board is the game, so it keeps the
+ * room and the panel is summoned over it.
+ *
+ * Kept in step with the `max-width: 900px` media queries below, which lay the
+ * sheet out; this side only decides whether it is open.
+ */
+const SIDEBAR_BREAKPOINT = 900
+const narrow = ref(window.innerWidth <= SIDEBAR_BREAKPOINT)
 /** Wide enough for the sidebar column to cost nothing, so it starts open there. */
-const showSidebar = ref(window.innerWidth > 900)
+const showSidebar = ref(!narrow.value)
+
+/*
+ * Crossing the breakpoint — a rotation, usually — asks the question the initial
+ * value answered again: a sheet left open over a phone's board hides the thing
+ * it annotates, and a window that widens has room for the column after all.
+ */
+function onResize() {
+  const wasNarrow = narrow.value
+  narrow.value = window.innerWidth <= SIDEBAR_BREAKPOINT
+  if (narrow.value !== wasNarrow) showSidebar.value = !narrow.value
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+
+/*
+ * The board, for the ticker to point at. With the panel shut there is nothing
+ * else on a phone that can say where an opponent's tile went — and at the zoom
+ * the board opens at, the mark on the hex is a few pixels wide.
+ */
+const board = ref<InstanceType<typeof BoardView> | null>(null)
+
+function showMove(spaceId: string) {
+  board.value?.showSpace(spaceId)
+}
 
 /** Caste pieces still standing on the board. */
 const remaining = computed(() => {
@@ -123,7 +161,10 @@ watch(
           ? pick(`[data-set-aside="${capture.caste}"]`)
           : pick(`[data-seat-caste="${capture.winner}:${capture.caste}"]`) ??
             pick(`[data-seat="${capture.winner}"] .captured-hidden`) ??
-            pick(`[data-seat="${capture.winner}"]`)
+            pick(`[data-seat="${capture.winner}"]`) ??
+            // Last: your own claim in the hand bar, which is the only one of
+            // these laid out on a phone with the panel shut.
+            (capture.winner === game.you ? pick(`[data-claimed="${capture.caste}"]`) : null)
       // A disc off the header if there is one, else whatever it is landing on.
       const node = shown(disc) ?? to
       if (!node) return
@@ -141,6 +182,7 @@ watch(
 )
 
 onUnmounted(() => {
+  window.removeEventListener('resize', onResize)
   if (flashTimer) clearTimeout(flashTimer)
 })
 </script>
@@ -223,9 +265,13 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <main class="layout" :class="{ solo: !showSidebar }">
+    <main class="layout" :class="{ solo: !showSidebar, narrow }">
       <div class="board-column">
-        <BoardView />
+        <BoardView ref="board" />
+
+        <!-- Stands in for the play log, which is behind the panel here. -->
+        <MoveTicker v-if="narrow" @open="showSidebar = true" @locate="showMove" />
+
         <HandBar v-if="game.isSeated" />
         <p v-else class="spectating tiny muted">{{ t('game.spectating') }}</p>
 
@@ -241,8 +287,19 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <!-- Only over a sheet: on a phone the panel covers the board, so the rest
+           of the table is dimmed and a tap beside it puts the panel away. -->
       <Transition name="fade">
-        <div v-if="showSidebar" id="game-sidebar" class="sidebar">
+        <div
+          v-if="narrow && showSidebar"
+          class="sheet-scrim"
+          aria-hidden="true"
+          @click="showSidebar = false"
+        />
+      </Transition>
+
+      <Transition name="fade">
+        <div v-if="showSidebar" id="game-sidebar" class="sidebar" :class="{ sheet: narrow }">
           <PlayerPanel />
           <LogPanel :entries="game.state?.log ?? []" :players="game.players" />
         </div>
@@ -562,29 +619,202 @@ onUnmounted(() => {
   border-top: 1px solid rgba(160, 137, 102, 0.35);
 }
 
+/* Dims the board under an open sheet; never rendered on a wide screen, where
+   the panel is a column and hides nothing. */
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  background: rgba(38, 28, 18, 0.32);
+}
+
+/* --- narrow screens: the panel lifts off the layout ----------------------- */
+
 @media (max-width: 900px) {
-  /* One column, the panel stacking under the board. `.layout.solo` outranks this
-     on specificity, so it has to be answered here rather than left to the
-     desktop rule. */
+  /* One column, the panel no longer taking a track of its own. `.layout.solo`
+     outranks a bare `.layout` on specificity, so it has to be answered here
+     rather than left to the desktop rule. */
   .layout,
   .layout.solo {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* Below the board rather than beside it, and never more than half the screen. */
-  .sidebar {
-    width: auto;
-    max-height: 45vh;
+  /* Two rows rather than one line that runs off the edge: the turn and the
+     table's controls, then the tallies under them. */
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.7rem;
+    padding-left: clamp(0.6rem, 3vw, 1.5rem);
+    padding-right: clamp(0.6rem, 3vw, 1.5rem);
   }
 
-  /* Sooner than wrap the bar onto two lines. */
+  /* The one line that must always be readable, so it takes the row and gives up
+     its own tail rather than pushing the buttons off the screen. */
+  .turn {
+    flex: 1 1 8rem;
+    min-width: 0;
+    gap: 0.4rem;
+  }
+
+  .round {
+    font-size: 0.7rem;
+  }
+
+  /* Tighter across, not shorter: the buttons keep the height a thumb needs and
+     give back side padding instead, which is what fits the turn and the table's
+     controls on one row from 375px up. */
+  .top-actions {
+    gap: 0.3rem;
+  }
+
+  .top-actions .btn.small {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+
+  .turn strong {
+    font-size: 1rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Kept, not dropped: they are the count the endgame is read off, and they are
+     also where a captured piece flies to while the panel is shut. */
   .tallies {
+    order: 3;
+    flex: 1 0 100%;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .tally {
+    gap: 0.55rem;
+  }
+
+  /* The head of the table menu says it again, and it is the widest thing in the
+     row it would otherwise wrap. */
+  .code {
     display: none;
   }
 
-  /* No vertical rule to sit on down here, so it keeps to the layout's edge. */
-  .sidebar-handle {
+  /* A sheet over the board: bottom-anchored in portrait, where a phone's thumb
+     is, and never taller than the board it is annotating. */
+  .sidebar {
+    position: absolute;
+    z-index: 25;
+    left: 0;
     right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: min(62%, 24rem);
+    border-left: 0;
+    border-top: 1px solid rgba(160, 137, 102, 0.35);
+    border-radius: 12px 12px 0 0;
+    background: var(--paper);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* The freeze outranks the sheet. Whoever is holding the table has to be able
+     to reach Resume, and with the panel up the scrim would otherwise swallow
+     the only control that lets the game go on. */
+  .pause-veil {
+    z-index: 30;
+  }
+
+  /* The seats scroll on their own once the table is full, so the log is never
+     squeezed out of the sheet entirely. */
+  .sidebar.sheet :deep(.side) {
+    flex: 0 1 auto;
+    overflow-y: auto;
+  }
+
+  .sidebar.sheet :deep(.entries) {
+    min-height: 3rem;
+  }
+
+  /* No vertical rule to sit on down here, so it keeps to the layout's edge —
+     and it is a tab a thumb has to find, so it is sized like one. */
+  .sidebar-handle {
+    top: 0.6rem;
+    right: 0;
+    z-index: 26;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 8px 0 0 8px;
+    font-size: 0.7rem;
+  }
+
+  /* Pull the sheet up, then push it back down — the chevron says which. */
+  .layout.narrow .chev {
+    transform: rotate(90deg);
+  }
+
+  .layout.narrow .sidebar-handle[aria-expanded='true'] .chev {
+    transform: rotate(-90deg);
+  }
+}
+
+/*
+ * Under about 416px the turn and the table's controls cannot share a row: the
+ * three buttons alone are most of it, and the turn would be cut to a word and
+ * an ellipsis. So the turn keeps a row of its own — it is the line that has to
+ * be readable at a glance — and the tallies come up beside the controls,
+ * scrolling in whatever width is left rather than taking a third row. Two rows
+ * either way; this is which two.
+ */
+@media (max-width: 26rem) {
+  .turn {
+    flex: 1 0 100%;
+  }
+
+  .tallies {
+    order: 0;
+    flex: 1 1 4rem;
+    min-width: 0;
+  }
+
+  .top-actions {
+    flex: none;
+  }
+}
+
+/* Rotated, the room is horizontal rather than vertical: the sheet comes in from
+   the side and leaves the board its full height. */
+@media (max-width: 900px) and (orientation: landscape) {
+  .sidebar {
+    top: 0;
+    left: auto;
+    width: min(20rem, 60%);
+    max-height: none;
+    border-top: 0;
+    border-left: 1px solid rgba(160, 137, 102, 0.35);
+    border-radius: 0;
+  }
+
+  /* Rides the drawer's edge rather than sitting on top of the seats, the way it
+     rides the column's edge on a desktop. */
+  .layout:not(.solo) .sidebar-handle {
+    right: min(20rem, 60%);
+  }
+}
+
+/* A phone on its side has about 390px of height for everything. Give back the
+   topbar's second row and its padding first — the board needs them more. */
+@media (max-width: 900px) and (max-height: 30rem) {
+  .topbar {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .turn strong {
+    font-size: 0.95rem;
+  }
+
+  .tallies {
+    display: none;
   }
 }
 </style>

@@ -57,8 +57,23 @@ body,
   height: 100%;
 }
 
+/* A mobile browser's toolbars make `100%` of the viewport a moving target, and
+   a screen that is laid out taller than the visible area puts the hand bar
+   under the URL bar. `dvh` is the visible height, toolbars and all, so the
+   three boxes track it together and nothing is ever laid out off screen. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #app {
+    height: 100dvh;
+  }
+}
+
 body {
   margin: 0;
+  /* Nothing on any screen is meant to reach past the right edge; a stray box on
+     a 320px phone would otherwise pan the whole page sideways. */
+  overflow-x: hidden;
   font-family: var(--font-body);
   color: var(--ink);
   background-color: var(--paper);
@@ -135,6 +150,8 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.02em;
   box-shadow: var(--shadow);
+  /* No double-tap-to-zoom delay on the buttons the game is played with. */
+  touch-action: manipulation;
   transition: transform 0.12s ease, filter 0.12s ease;
 }
 
@@ -168,6 +185,29 @@ button:disabled {
   min-height: 1.8rem;
   padding: 0.35rem 0.75rem;
   font-size: 0.85rem;
+}
+
+/* A finger is not a cursor: the small button is comfortable to click at 1.8rem
+   and awkward to tap, so on a touch screen it grows to a target a thumb can
+   actually land on. Keyed off the pointer rather than the width, so a touch
+   laptop gets it and a narrow desktop window does not. */
+@media (pointer: coarse) {
+  .btn.small {
+    min-height: 2.3rem;
+    padding: 0.45rem 0.85rem;
+  }
+
+  .check input[type='checkbox'] {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .check input[type='checkbox']::after {
+    left: 0.46rem;
+    top: 0.2rem;
+    width: 0.3rem;
+    height: 0.62rem;
+  }
 }
 
 .seal {

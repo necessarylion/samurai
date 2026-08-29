@@ -119,12 +119,17 @@ const faceOf = (roll: number) => (tumbling.value ? tumble.value : roll)
 </template>
 
 <style scoped>
+/* Fixed, so it sits outside the safe-area insets `.app` takes and keeps itself
+   clear of a notch; and it scrolls rather than centring a six-seat roll-off off
+   the top and bottom of a phone in landscape. */
 .veil {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 1rem;
+  overflow-y: auto;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   background: rgba(28, 22, 19, 0.5);
   z-index: 80;
 }
