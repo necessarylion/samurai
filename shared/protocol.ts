@@ -26,9 +26,15 @@ import type { Card, Fruit, HalliEvent, HalliResult } from './halligalli'
 import type { PieceRef } from './rules'
 import type { SnakeDir, SnakeResult } from './snake'
 import type { LaddersResult, LastRoll, Power } from './ladders'
+import type {
+  MonopolyPending,
+  MonopolyResult,
+  MonopolyRoll,
+  TradeSide,
+} from './monopoly'
 import type { Caste, GameResult, LogEntry, PlacedTile, PlayerColour } from './types'
 
-export const PROTOCOL_VERSION = 8
+export const PROTOCOL_VERSION = 9
 
 /**
  * How often the server pings each client. A client that hears nothing for a few
@@ -493,6 +499,110 @@ export interface LaddersClientState {
   turnMsLeft: number | null
 }
 
+/**
+ * A Monopoly seat. Cash, position and gaol standing are all public — the game
+ * is played with the money on the table — so this is the whole of a seat.
+ */
+export interface MonopolyPublicPlayer {
+  id: number
+  name: string
+  colour: PlayerColour
+  connected: boolean
+  cash: number
+  /** Space stood on, 0–39. */
+  pos: number
+  jailed: boolean
+  /** Cards held that let you leave the gaol — a count; the deck stays hidden. */
+  jailCards: number
+  /** Out of the game — everything sold or handed to a creditor. */
+  bankrupt: boolean
+  /** Everything this seat could raise by selling and mortgaging, plus its cash. */
+  worth: number
+}
+
+/**
+ * What this viewer may do right now. Decided on the server from the engine's
+ * own helpers and sent ready-made, the way Coup sends its challenge windows:
+ * building evenly, mortgaging a group with houses on it and covering a bid are
+ * all rules, and a button that disagrees with the engine is worse than none.
+ */
+export interface MonopolyAffordances {
+  roll: boolean
+  endTurn: boolean
+  /** The space on the block, or null when nothing is being offered to you. */
+  buy: number | null
+  /** You owe the standing auction an answer. */
+  bid: boolean
+  /** The least a bid must be to beat the standing one. */
+  minBid: number
+  /** An offer is waiting on you. */
+  trade: boolean
+  /** Seats you may put an offer to; empty unless it is your turn. */
+  partners: number[]
+  build: number[]
+  sell: number[]
+  mortgage: number[]
+  unmortgage: number[]
+  /** You are in the gaol and owe the table a choice. */
+  jail: boolean
+  /** You may buy your way out — the fine is affordable. */
+  jailPay: boolean
+  /** You hold a card that opens the door. */
+  jailCard: boolean
+  /** You owe more than you hold, and must sell, mortgage, or give up. */
+  debt: number | null
+}
+
+/**
+ * The Monopoly state sent to one client. Almost nothing here is secret: cash,
+ * ownership, houses and mortgages are all public, and only the order of the two
+ * undrawn decks stays on the server, travelling as a count. The two fields
+ * answered from *who is asking* are `can` and the trade offer inside `pending`,
+ * which reaches only the two seats it is between.
+ */
+export interface MonopolyClientState {
+  kind: 'monopoly'
+  code: string
+  phase: 'lobby' | 'play' | 'over'
+  options: GameOptions
+  hostId: number
+  you: number | null
+  players: MonopolyPublicPlayer[]
+  playerCount: number
+  current: number
+  turnNumber: number
+  opening: Opening | null
+  /** Owner of each of the forty spaces, by index; null is the bank. */
+  owners: (number | null)[]
+  /** Houses on each space; 5 is a hotel. */
+  houses: number[]
+  mortgaged: boolean[]
+  /** Houses and hotels the bank still has to lend. */
+  bank: { houses: number; hotels: number }
+  /** What the table is waiting on, or null when it is simply someone's turn. */
+  pending: MonopolyPending | null
+  /** The current seat has thrown and may now manage the turn and end it. */
+  rolled: boolean
+  /** Throws made this game — what the table keys its dice animation on. */
+  rollCount: number
+  /** Cards turned over this game — what the table keys the card replay on. */
+  cardCount: number
+  lastRoll: MonopolyRoll | null
+  lastCard: { deck: 'chance' | 'chest'; text: string; player: number } | null
+  /** Undrawn cards in each deck — counts only; the order stays on the server. */
+  decks: { chance: number; chest: number }
+  can: MonopolyAffordances
+  log: LogEntry[]
+  result: MonopolyResult | null
+  paused: boolean
+  /**
+   * Milliseconds left on the clock for the decision in front of the table, or
+   * null when it is untimed. Sent as a remainder rather than a deadline for the
+   * same reason the others are; frozen while the table is paused.
+   */
+  turnMsLeft: number | null
+}
+
 /** Any game's redacted state; `kind` says which, for the client to route on. */
 export type AnyClientState =
   | ClientState
@@ -502,6 +612,7 @@ export type AnyClientState =
   | CopClientState
   | SnakeClientState
   | LaddersClientState
+  | MonopolyClientState
 
 export type ClientMessage =
   /** `code` is the table this client believes it is at, so a server that has
@@ -565,6 +676,30 @@ export type ClientMessage =
   | { t: 'snakeDir'; dir: SnakeDir }
   /** Snakes & Ladders: throw the die (only on your turn). */
   | { t: 'laddersRoll' }
+  /** Monopoly: throw the dice and move (only on your turn). */
+  | { t: 'monoRoll' }
+  /** Monopoly: buy the space you stopped on, at the bank's price. */
+  | { t: 'monoBuy' }
+  /** Monopoly: decline — a purchase goes to auction, a bid is given up. */
+  | { t: 'monoPass' }
+  /** Monopoly: raise the standing bid on the space under the hammer. */
+  | { t: 'monoBid'; amount: number }
+  /** Monopoly: put an offer to one other seat. */
+  | { t: 'monoTradeOffer'; to: number; give: TradeSide; want: TradeSide }
+  | { t: 'monoTradeAccept' }
+  | { t: 'monoTradeDecline' }
+  /** Monopoly: put a house — or the fifth, a hotel — on one of your streets. */
+  | { t: 'monoBuild'; space: number }
+  /** Monopoly: sell a house back to the bank at half what it cost. */
+  | { t: 'monoSell'; space: number }
+  | { t: 'monoMortgage'; space: number }
+  | { t: 'monoUnmortgage'; space: number }
+  /** Monopoly: leave the gaol by paying, spending a card, or throwing for doubles. */
+  | { t: 'monoJail'; choice: 'pay' | 'card' | 'roll' }
+  /** Monopoly: give up — everything goes to the creditor, or back to the bank. */
+  | { t: 'monoBankrupt' }
+  /** Monopoly: hand the turn on, once the dice are thrown and all is settled. */
+  | { t: 'monoEndTurn' }
   /** Suspend or resume the table. Open to any seated player. */
   | { t: 'pause' }
   | { t: 'resume' }

@@ -27,6 +27,21 @@ import { DEFAULT_OPTIONS, Game, type GameOptions, type GameState } from '../shar
 import { HalliGame, fruitTotals, ringingFruit, type HalliGameState } from '../shared/halligalli'
 import { SnakeGame, type SnakeGameState } from '../shared/snake'
 import { LaddersGame, POWER_SHUFFLE_MS, type LaddersGameState } from '../shared/ladders'
+import {
+  HOTEL_SUPPLY,
+  HOUSE_SUPPLY,
+  JAIL_FINE,
+  MonopolyGame,
+  buildable,
+  builtCounts,
+  inAuction,
+  liquidValue,
+  mortgageable,
+  sellable,
+  tradePartners,
+  unmortgageable,
+  type MonopolyGameState,
+} from '../shared/monopoly'
 import type {
   AnyClientState,
   CarnivalClientState,
@@ -44,6 +59,9 @@ import type {
   SnakePublicPlayer,
   LaddersClientState,
   LaddersPublicPlayer,
+  MonopolyAffordances,
+  MonopolyClientState,
+  MonopolyPublicPlayer,
 } from '../shared/protocol'
 import { teamArrangements, teamLeader, teamOf } from '../shared/rules'
 import { COLOUR_ORDER } from '../shared/colours'
@@ -98,6 +116,8 @@ export interface RoomSnapshot {
   snake?: SnakeGameState | null
   /** The Snakes & Ladders engine's state, when this is a ladders table. */
   ladders?: LaddersGameState | null
+  /** The Monopoly engine's state, when this is a monopoly table. */
+  monopoly?: MonopolyGameState | null
 }
 
 export class Room {
@@ -123,6 +143,8 @@ export class Room {
   snake: SnakeGame | null = null
   /** The running Snakes & Ladders game, when this room's kind is ladders. */
   ladders: LaddersGame | null = null
+  /** The running Monopoly game, when this room's kind is monopoly. */
+  monopoly: MonopolyGame | null = null
   /**
    * When the ladders table next moves its power squares. Like the shot clock it
    * is not part of the snapshot: a restored table simply arms a fresh period.
@@ -174,6 +196,7 @@ export class Room {
       cop: this.cop?.state ?? null,
       snake: this.snake?.state ?? null,
       ladders: this.ladders?.state ?? null,
+      monopoly: this.monopoly?.state ?? null,
     }
   }
 
@@ -198,6 +221,7 @@ export class Room {
     room.cop = snapshot.cop ? CopGame.fromState(snapshot.cop) : null
     room.snake = snapshot.snake ? SnakeGame.fromState(snapshot.snake) : null
     room.ladders = snapshot.ladders ? LaddersGame.fromState(snapshot.ladders) : null
+    room.monopoly = snapshot.monopoly ? MonopolyGame.fromState(snapshot.monopoly) : null
     return room
   }
 
@@ -209,7 +233,8 @@ export class Room {
       this.carn !== null ||
       this.cop !== null ||
       this.snake !== null ||
-      this.ladders !== null
+      this.ladders !== null ||
+      this.monopoly !== null
     )
   }
 
@@ -221,6 +246,7 @@ export class Room {
     if (this.cop) return this.cop.state.phase === 'over'
     if (this.snake) return this.snake.state.phase === 'over'
     if (this.ladders) return this.ladders.state.phase === 'over'
+    if (this.monopoly) return this.monopoly.state.phase === 'over'
     return this.game?.state.phase === 'over'
   }
 
@@ -318,6 +344,7 @@ export class Room {
     this.cop = null
     this.snake = null
     this.ladders = null
+    this.monopoly = null
     const dice = this.options.diceStart
     if (this.options.kind === 'halligalli') this.hg = new HalliGame(this.seats.length, seed, dice)
     else if (this.options.kind === 'coup') this.coup = new CoupGame(this.seats.length, seed, dice)
@@ -326,6 +353,7 @@ export class Room {
     // Snake has no opening seat to roll for — every snake moves at once.
     else if (this.options.kind === 'snake') this.snake = new SnakeGame(this.seats.length, seed)
     else if (this.options.kind === 'ladders') this.ladders = new LaddersGame(this.seats.length, seed, dice)
+    else if (this.options.kind === 'monopoly') this.monopoly = new MonopolyGame(this.seats.length, seed, dice)
     // Samurai reads the option off `options`, which it already carries.
     else this.game = new Game(this.seats.length, this.options, seed)
   }
@@ -373,6 +401,7 @@ export class Room {
     this.cop = null
     this.snake = null
     this.ladders = null
+    this.monopoly = null
     this.dropAbsentPlayers()
     this.touch()
     return null
@@ -405,6 +434,7 @@ export class Room {
     if (this.cop) return this.cop.state.paused
     if (this.snake) return this.snake.state.paused
     if (this.ladders) return this.ladders.state.paused
+    if (this.monopoly) return this.monopoly.state.paused
     return this.game?.state.paused ?? false
   }
 
@@ -412,6 +442,7 @@ export class Room {
   private currentTurnKey(): string | null {
     if (!this.options.turnSeconds) return null
     if (this.coup) return this.coupTurnKey()
+    if (this.monopoly) return this.monopolyTurnKey()
     if (this.carn) return this.carnivalTurnKey()
     if (this.cop) return this.copTurnKey()
     if (this.ladders) {
@@ -422,6 +453,20 @@ export class Room {
     const s = this.game?.state
     if (!s || s.phase !== 'play') return null
     return `${s.turnNumber}:${s.current}`
+  }
+
+  /**
+   * Monopoly runs the clock on whatever the table is waiting for, which is not
+   * always the seat whose turn it is: an auction waits on every solvent
+   * opponent and a trade on one named seat. Keyed on the pending step as well
+   * as the turn, the way COP keys on its round's step, so a decision handed
+   * across the table gets a fresh period rather than inheriting the roller's.
+   */
+  private monopolyTurnKey(): string | null {
+    const s = this.monopoly?.state
+    if (!s || s.phase !== 'play') return null
+    const p = s.pending[0]
+    return `${s.turnNumber}:${s.rollCount}:${s.current}:${p ? `${p.step}${'player' in p ? p.player : ''}` : ''}`
   }
 
   /**
@@ -533,6 +578,7 @@ export class Room {
     if (this.options.kind === 'cop') return this.copStateFor(token)
     if (this.options.kind === 'snake') return this.snakeStateFor(token)
     if (this.options.kind === 'ladders') return this.laddersStateFor(token)
+    if (this.options.kind === 'monopoly') return this.monopolyStateFor(token)
     const seat = this.seatByToken(token)
     const game = this.game
     const open = this.options.openInformation || game?.state.phase === 'over'
@@ -1213,6 +1259,160 @@ export class Room {
       result: s.result,
       paused: s.paused,
       turnMsLeft: this.turnMsLeft(),
+    }
+  }
+
+  /**
+   * The Monopoly state for one viewer. Cash, ownership and buildings are all
+   * public, so the board travels in full; only the order of the two undrawn
+   * decks stays here, as a count. The two things answered from who is asking
+   * are the affordances — worked out from the engine's own helpers, so a button
+   * cannot disagree with the rules — and the trade offer, which reaches only
+   * the two seats it is between.
+   */
+  private monopolyStateFor(token: string): MonopolyClientState {
+    const seat = this.seatByToken(token)
+    const mp = this.monopoly
+    const hostId = this.seats.find((s) => s.token === this.hostToken)?.id ?? 0
+
+    const players: MonopolyPublicPlayer[] = this.seats.map((s) => {
+      const p = mp?.state.players[s.id]
+      return {
+        id: s.id,
+        name: s.name,
+        colour: s.colour,
+        connected: s.connected,
+        cash: p?.cash ?? 0,
+        pos: p?.pos ?? 0,
+        jailed: p?.jailed ?? false,
+        jailCards: p?.jailCards ?? 0,
+        bankrupt: p?.bankrupt ?? false,
+        worth: mp ? liquidValue(mp.state, s.id) : 0,
+      }
+    })
+
+    const base = {
+      kind: 'monopoly' as const,
+      code: this.code,
+      options: this.options,
+      hostId,
+      you: seat?.id ?? null,
+      players,
+      playerCount: this.seats.length,
+    }
+
+    const idle: MonopolyAffordances = {
+      roll: false,
+      endTurn: false,
+      buy: null,
+      bid: false,
+      minBid: 0,
+      trade: false,
+      partners: [],
+      build: [],
+      sell: [],
+      mortgage: [],
+      unmortgage: [],
+      jail: false,
+      jailPay: false,
+      jailCard: false,
+      debt: null,
+    }
+
+    if (!mp) {
+      return {
+        ...base,
+        phase: 'lobby',
+        current: 0,
+        turnNumber: 0,
+        opening: null,
+        owners: [],
+        houses: [],
+        mortgaged: [],
+        bank: { houses: HOUSE_SUPPLY, hotels: HOTEL_SUPPLY },
+        pending: null,
+        rolled: false,
+        rollCount: 0,
+        cardCount: 0,
+        lastRoll: null,
+        lastCard: null,
+        decks: { chance: 0, chest: 0 },
+        can: idle,
+        log: [],
+        result: null,
+        paused: false,
+        turnMsLeft: null,
+      }
+    }
+
+    const s = mp.state
+    const you = seat?.id ?? null
+    const p = s.pending[0] ?? null
+    const built = builtCounts(s)
+    // A spectator, a bankrupt seat and a paused table all get the idle set —
+    // there is nothing any of them may do, and the client should not offer it.
+    const can = you !== null && !s.players[you]?.bankrupt && !s.paused && s.phase === 'play'
+      ? this.monopolyAffordances(mp, you, p)
+      : idle
+
+    return {
+      ...base,
+      phase: s.phase,
+      current: s.current,
+      turnNumber: s.turnNumber,
+      opening: s.opening,
+      owners: s.owners,
+      houses: s.houses,
+      mortgaged: s.mortgaged,
+      bank: { houses: HOUSE_SUPPLY - built.houses, hotels: HOTEL_SUPPLY - built.hotels },
+      // An offer is between two seats; the rest of the table sees only that the
+      // two of them are talking, never what was put up.
+      pending:
+        p?.step === 'trade' && you !== p.from && you !== p.to
+          ? { ...p, give: { spaces: [], cash: 0 }, want: { spaces: [], cash: 0 } }
+          : p,
+      rolled: s.rolled,
+      rollCount: s.rollCount,
+      cardCount: s.cardCount,
+      lastRoll: s.lastRoll,
+      lastCard: s.lastCard,
+      decks: { chance: s.chance.length, chest: s.chest.length },
+      can,
+      log: s.log,
+      result: s.result,
+      paused: s.paused,
+      turnMsLeft: this.turnMsLeft(),
+    }
+  }
+
+  /** What one seat may do, read off the engine's own rule helpers. */
+  private monopolyAffordances(
+    mp: MonopolyGame,
+    you: number,
+    p: MonopolyGameState['pending'][number] | null,
+  ): MonopolyAffordances {
+    const s = mp.state
+    const mine = s.current === you
+    const owing = p?.step === 'debt' && p.player === you ? p.amount : null
+    // A debt blocks everything except the ways out of it, which is exactly the
+    // engine's own guard — mirrored here so no button is offered that it refuses.
+    const free = owing === null
+    return {
+      roll: mine && free && !s.rolled && !p,
+      endTurn: mine && free && s.rolled && !p,
+      buy: p?.step === 'buy' && p.player === you ? p.space : null,
+      bid: p?.step === 'auction' ? inAuction(s, you) : false,
+      minBid: p?.step === 'auction' ? p.high + 1 : 0,
+      trade: p?.step === 'trade' && p.to === you,
+      partners: mine && free && !p ? tradePartners(s, you) : [],
+      build: free ? buildable(s, you) : [],
+      sell: sellable(s, you),
+      mortgage: mortgageable(s, you),
+      unmortgage: free ? unmortgageable(s, you) : [],
+      jail: p?.step === 'jail' && p.player === you,
+      jailPay: s.players[you].cash >= JAIL_FINE,
+      jailCard: s.players[you].jailCards > 0,
+      debt: owing,
     }
   }
 }

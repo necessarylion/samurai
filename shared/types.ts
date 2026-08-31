@@ -3,10 +3,19 @@ import type { HexId } from './hex'
 /**
  * Which game a room is playing. `samurai` is the original Knizia implementation;
  * `halligalli`, `coup`, `carnivals` and `cop` are further, unrelated card games,
- * `snake` an arcade game and `ladders` a dice race, all sharing only this app's
- * room, seat and reconnection machinery, never its rules layer.
+ * `snake` an arcade game, `ladders` a dice race and `monopoly` a property
+ * trading game, all sharing only this app's room, seat and reconnection
+ * machinery, never its rules layer.
  */
-export type GameKind = 'samurai' | 'halligalli' | 'coup' | 'carnivals' | 'cop' | 'snake' | 'ladders'
+export type GameKind =
+  | 'samurai'
+  | 'halligalli'
+  | 'coup'
+  | 'carnivals'
+  | 'cop'
+  | 'snake'
+  | 'ladders'
+  | 'monopoly'
 
 export const GAME_KINDS: readonly GameKind[] = [
   'samurai',
@@ -16,6 +25,7 @@ export const GAME_KINDS: readonly GameKind[] = [
   'cop',
   'snake',
   'ladders',
+  'monopoly',
 ]
 
 /** The three societal castes competed over in the game. */
@@ -69,6 +79,7 @@ export const GAME_MAX_PLAYERS: Record<GameKind, number> = {
   cop: 8,
   snake: 8,
   ladders: 8,
+  monopoly: 8,
 }
 
 /** How many seats a room running `kind` may open. */

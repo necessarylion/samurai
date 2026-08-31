@@ -437,6 +437,54 @@ wss.on('connection', (socket) => {
       return
     }
 
+    // Monopoly likewise: its own engine, routed before the Samurai game below.
+    if (room.monopoly) {
+      if (!seat) return fail(socket, 'You are watching this game, not playing it.')
+      const mp = room.monopoly
+      const outcome = (() => {
+        switch (msg.t) {
+          case 'monoRoll':
+            return mp.roll(seat.id)
+          case 'monoBuy':
+            return mp.buy(seat.id)
+          case 'monoPass':
+            return mp.pass(seat.id)
+          case 'monoBid':
+            return mp.bid(seat.id, msg.amount)
+          case 'monoTradeOffer':
+            return mp.offerTrade(seat.id, msg.to, msg.give, msg.want)
+          case 'monoTradeAccept':
+            return mp.acceptTrade(seat.id)
+          case 'monoTradeDecline':
+            return mp.declineTrade(seat.id)
+          case 'monoBuild':
+            return mp.build(seat.id, msg.space)
+          case 'monoSell':
+            return mp.sell(seat.id, msg.space)
+          case 'monoMortgage':
+            return mp.mortgage(seat.id, msg.space)
+          case 'monoUnmortgage':
+            return mp.unmortgage(seat.id, msg.space)
+          case 'monoJail':
+            return mp.jailChoice(seat.id, msg.choice)
+          case 'monoBankrupt':
+            return mp.declareBankrupt(seat.id)
+          case 'monoEndTurn':
+            return mp.endTurn(seat.id)
+          case 'pause':
+            return mp.pause(seat.id)
+          case 'resume':
+            return mp.resume(seat.id)
+          default:
+            return { ok: false as const, error: 'Unknown action.' }
+        }
+      })()
+      if (!outcome.ok) return fail(socket, outcome.error)
+      room.touch()
+      commit(room)
+      return
+    }
+
     // Everything below is a game action and needs a seat and a running game.
     if (!seat) return fail(socket, 'You are watching this game, not playing it.')
     const game = room.game
@@ -542,6 +590,10 @@ setInterval(() => {
     } else if (room.ladders) {
       // Snakes & Ladders throws the die for whoever is holding the table up.
       if (room.ladders.timeOut().ok) room.touch()
+    } else if (room.monopoly) {
+      // Monopoly settles whatever the table is waiting on in the way that costs
+      // the absent player least: a bid dropped, an offer declined, a turn ended.
+      if (room.monopoly.timeOut().ok) room.touch()
     }
     room.rearmTurnTimer()
     commit(room)

@@ -72,6 +72,14 @@ function pick(kind: GameKind) {
         <span class="go">{{ t('landing.play') }}</span>
       </button>
 
+      <button class="game-card monopoly" type="button" @click="pick('monopoly')">
+        <span class="seal terrace">🏠</span>
+        <span class="game-name">{{ t('landing.monopoly.name') }}</span>
+        <span class="game-blurb">{{ t('landing.monopoly.blurb') }}</span>
+        <span class="meta tiny">{{ t('landing.monopoly.meta') }}</span>
+        <span class="go">{{ t('landing.play') }}</span>
+      </button>
+
       <button class="game-card cop" type="button" @click="pick('cop')">
         <span class="seal siren">🚔</span>
         <span class="game-name">{{ t('landing.cop.name') }}</span>
@@ -197,6 +205,11 @@ function pick(kind: GameKind) {
 
 .seal.die {
   background: linear-gradient(140deg, #b23a2c, #d4a017);
+}
+
+.seal.terrace {
+  font-size: 1.5rem;
+  background: linear-gradient(140deg, #8a6f52, #2c241c);
 }
 
 .game-name {
