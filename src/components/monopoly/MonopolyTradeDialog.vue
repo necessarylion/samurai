@@ -216,4 +216,53 @@ h3 {
   gap: 0.5rem;
   margin-top: 1.1rem;
 }
+
+/* The offer is built on a phone the same way it is built on a desktop — one
+   column instead of two, and the whole of it inside the viewport. `dvh` and the
+   insets because this is fixed, and so sits outside the safe area the app takes
+   for every screen laid out in the ordinary flow. */
+@media (max-width: 46rem) {
+  .backdrop {
+    align-items: flex-end;
+    padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right))
+      max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 0.9rem;
+  }
+
+  .sides {
+    gap: 0.7rem;
+    margin-top: 0.7rem;
+  }
+
+  /* Each list keeps its own scroll, so a player holding twenty companies cannot
+     push the offer's own buttons off the bottom of the sheet. */
+  .picks {
+    max-height: 9rem;
+  }
+
+  /* Room for a fingertip on what is a row of checkboxes. */
+  .picks label {
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+  }
+
+  .select,
+  .num {
+    min-height: 2.5rem;
+  }
+
+  .actions {
+    margin-top: 0.9rem;
+  }
+
+  .actions .btn {
+    flex: 1 1 auto;
+    min-height: 2.75rem;
+  }
+}
 </style>

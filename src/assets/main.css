@@ -192,6 +192,13 @@ button:disabled {
    actually land on. Keyed off the pointer rather than the width, so a touch
    laptop gets it and a narrow desktop window does not. */
 @media (pointer: coarse) {
+  /* 44px, the usual floor for something meant to be hit with a thumb. The
+     tables set this on their own primary buttons already; here it covers every
+     game at once, so a control is never the one that got missed. */
+  .btn {
+    min-height: 2.75rem;
+  }
+
   .btn.small {
     min-height: 2.3rem;
     padding: 0.45rem 0.85rem;

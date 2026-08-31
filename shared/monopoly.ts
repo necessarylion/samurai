@@ -287,6 +287,11 @@ export type MonopolyPending =
    * A space nobody bought, open to the whole table. `high` and `highBidder`
    * carry the standing bid; `passed` closes the window the way Coup's
    * reaction windows close, when everyone still eligible has answered.
+   *
+   * Dropping out is final: a seat in `passed` is out of the bidding for this
+   * space however high it goes afterwards, and is never taken back off the
+   * list. That is what makes the window shrink towards a close rather than
+   * reopening on every raise, and it is why the last bidder standing wins.
    */
   | { step: 'auction'; space: number; high: number; highBidder: number | null; passed: number[] }
   /** An offer waiting on the one seat it was aimed at. */
@@ -495,12 +500,21 @@ export function tradePartners(state: MonopolyGameState, playerId: number): numbe
   return state.players.filter((p) => !p.bankrupt && p.id !== playerId).map((p) => p.id)
 }
 
-/** Whether a seat is still owed an answer by the standing auction. */
+/**
+ * Whether a seat is still owed an answer by the standing auction.
+ *
+ * Three ways to be out of one: bankruptcy, having dropped out — which is final
+ * — and holding the standing bid, since that seat has already answered and has
+ * nothing it could usefully say until somebody outbids it. Everything else
+ * reads the window through this one function: what the client is offered, who
+ * the shot clock answers for, and when the hammer falls.
+ */
 export function inAuction(state: MonopolyGameState, playerId: number): boolean {
   const p = state.pending[0]
   if (p?.step !== 'auction') return false
   const player = state.players[playerId]
-  return !!player && !player.bankrupt && !p.passed.includes(playerId)
+  if (!player || player.bankrupt) return false
+  return !p.passed.includes(playerId) && p.highBidder !== playerId
 }
 
 // --- engine ------------------------------------------------------------------
@@ -627,6 +641,9 @@ export class MonopolyGame {
       return ok
     }
     if (p?.step === 'auction') {
+      // Answered ahead of the general refusal, which would otherwise tell the
+      // player who is winning the auction that they were never in it.
+      if (p.highBidder === playerId) return fail('Your bid stands; you cannot drop out of it.')
       if (!inAuction(s, playerId)) return fail('You are not in this auction.')
       p.passed.push(playerId)
       this.log(playerId, 'drops out of the auction.')
@@ -644,13 +661,14 @@ export class MonopolyGame {
     if (guard) return guard
     const p = s.pending[0]
     if (p?.step !== 'auction') return fail('Nothing is under the hammer.')
+    if (p.highBidder === playerId) return fail('Your bid is already the standing one.')
     if (!inAuction(s, playerId)) return fail('You are not in this auction.')
     if (!Number.isInteger(amount) || amount <= p.high) return fail('That does not beat the standing bid.')
     if (s.players[playerId].cash < amount) return fail('You cannot cover that bid.')
     p.high = amount
     p.highBidder = playerId
-    // A raise reopens the window to everyone who had dropped out on a lower bid.
-    p.passed = [playerId]
+    // `passed` is deliberately left alone: a raise does not buy anyone who has
+    // already walked away a second look at the space.
     this.log(playerId, `bids ${money(amount)} for ${SPACES[p.space].name}.`)
     this.advance()
     return ok
@@ -1225,9 +1243,10 @@ export class MonopolyGame {
       }
 
       if (p.step === 'auction') {
-        const waiting = s.players.filter((pl) => inAuction(s, pl.id))
-        // Closed once the standing bidder is alone, or nobody wants it at all.
-        if (waiting.length === 0 || (waiting.length === 1 && waiting[0].id === p.highBidder)) {
+        // Closed when nobody is left to answer: everyone else has dropped out,
+        // and the standing bidder is never waiting on themselves. With drop-outs
+        // final the window only shrinks, so an auction always reaches a hammer.
+        if (!s.players.some((pl) => inAuction(s, pl.id))) {
           s.pending.shift()
           this.closeAuction(p)
           continue

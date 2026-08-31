@@ -22,7 +22,7 @@ A game engine is not required to implement an interface, but `Room` and the clie
 
 **Coup hides more than the other two.** `shared/coup.ts` holds a `pending` stack rather than a single slot, because a challenge forces a card loss *in front of* the action that provoked it; `advance()` drains every step that needs nobody's input and stops on the first that does. A reaction window closes as soon as anyone challenges or blocks, and otherwise when every eligible opponent has passed. Two consequences worth knowing: a hand is the whole of a player's position, so `coupStateFor()` sends held influence as a count, keeps the court deck off the wire entirely, and gives an exchange's drawn pair only to the player who drew it; and because the client cannot derive a challenge window from a redacted hand, the server computes each viewer's `CoupAffordances` and sends them ready-made, the way Halli Galli sends its fruit totals. Coup also reshuffles mid-game, which Samurai and Halli Galli never do — that is why `Rng` exposes `position` and `CoupGameState` carries the generator's place rather than its original seed.
 
-**Monopoly is Coup's shape, not Snakes & Ladders'.** It looks like the dice race — a token going round a track — but its decisions are not all the current player's: an auction waits on every solvent opponent at once, a trade on one named opponent, and a debt on a debtor who must sell before anything else can happen. So `shared/monopoly.ts` carries the same `pending` stack and `advance()` drain, and the server computes each viewer's `MonopolyAffordances` from the engine's own exported helpers (`buildable`, `sellable`, `mortgageable`, `tradePartners`, `inAuction`) rather than letting the client re-derive rules like even building. Almost nothing is secret — cash, ownership and buildings are all public — so the two deliberate redactions in `monopolyStateFor()` are the affordance block and a trade's terms, which reach only the two seats it is between. Three rules the stack settles without asking anyone, worth knowing before reading `advance()`: a purchase the lander cannot afford goes straight to auction, a debt larger than everything the debtor could raise is bankruptcy rather than a decision, and **a seat that goes bankrupt on its own turn has the turn taken off it there**. That last one deadlocked a whole table once: `guard()` rejects every action from a bankrupt player and every action worth taking is gated on `playerId === current`, so a bankrupt `current` is a seat nobody can play and nobody can pass. `checkEnd()` running at the top of the same loop is what stops the hand-off searching forever when nobody solvent is left. Like Coup and Snakes & Ladders it carries `rngPosition`, because dice and cards are drawn all game long.
+**Monopoly is Coup's shape, not Snakes & Ladders'.** It looks like the dice race — a token going round a track — but its decisions are not all the current player's: an auction waits on every solvent opponent at once, a trade on one named opponent, and a debt on a debtor who must sell before anything else can happen. So `shared/monopoly.ts` carries the same `pending` stack and `advance()` drain, and the server computes each viewer's `MonopolyAffordances` from the engine's own exported helpers (`buildable`, `sellable`, `mortgageable`, `tradePartners`, `inAuction`) rather than letting the client re-derive rules like even building. `inAuction` is the single definition of who an auction is still waiting on — not bankrupt, not dropped out, and *not the standing high bidder*, who has already answered — and everything reads the window through it: the affordances, the shot clock's auto-pass, and the test in `advance()` for when the hammer falls. Dropping out is final, so `passed` only ever grows and an auction always closes; that is also why a bid may not be raised or withdrawn by the seat already holding it. Almost nothing is secret — cash, ownership and buildings are all public — so the two deliberate redactions in `monopolyStateFor()` are the affordance block and a trade's terms, which reach only the two seats it is between. Three rules the stack settles without asking anyone, worth knowing before reading `advance()`: a purchase the lander cannot afford goes straight to auction, a debt larger than everything the debtor could raise is bankruptcy rather than a decision, and **a seat that goes bankrupt on its own turn has the turn taken off it there**. That last one deadlocked a whole table once: `guard()` rejects every action from a bankrupt player and every action worth taking is gated on `playerId === current`, so a bankrupt `current` is a seat nobody can play and nobody can pass. `checkEnd()` running at the top of the same loop is what stops the hand-off searching forever when nobody solvent is left. Like Coup and Snakes & Ladders it carries `rngPosition`, because dice and cards are drawn all game long.
 
 The board in `shared/monopoly.ts` is original in the same way `shared/board.ts` is: forty spaces, eight colour groups of two or three, four stations and two utilities, with names, prices and both card decks written here rather than taken from a published edition. Rules and mechanics are not copyrightable; a printed board's street names and artwork are. The properties are technology companies and each colour band is a sector, so `src/game/companies.ts` carries a logo for every one, drawn in that brand's own colours. **These are the one place the repo departs from its own "all artwork is original" rule** — they are hand-drawn approximations of real marks, added at the user's explicit direction, and they are trademarks of their owners. Worth knowing before this board is shown anywhere public. `CompanyLogo.vue` renders them as real elements on the space rather than as a background wash, because a logo at half opacity behind text stops reading as the logo; the brand colour survives as a 10% plate so the sector still reads at a glance. Every property needs an entry or its space renders bare beside its neighbours, which `tests/monopoly.render.test.ts` checks both ways — along with each logo actually containing the colour its plate claims.
 
@@ -43,6 +43,7 @@ The board is sized `width: min(100%, 80vh)` with `container-type: inline-size` o
 | `bun start` | Runs the built server, which also serves `dist/` |
 | `bun run test` | Full vitest suite, including the end-to-end game over real WebSockets |
 | `bun run typecheck` | `vue-tsc --noEmit` over client, server, shared and tests |
+| `cd e2e && bun run test` | Playwright, in its own standalone package — see below |
 
 Run one test file: `bunx vitest run tests/rules.test.ts`. One case: `bunx vitest run -t "resolving a contest"`. Watch: `bun run test:watch`.
 
@@ -96,6 +97,76 @@ Two rules details the rulebook constrains without spelling out, already recorded
 - Comments explain *why*, not *what*, and are used sparingly on the non-obvious invariants above. Match that density.
 - Player colours live in `shared/colours.ts`, but the order they are dealt in does not: each room shuffles its own palette into `Room.colours` and stores it in the snapshot, so seat 0 is not always gold and a restart does not recolour the table. The paper/ink design tokens are CSS custom properties in `src/assets/main.css`.
 - Game iconography is in `src/game/icons.ts`: inline 24×24 SVG silhouettes inheriting `currentColor`, plus raster art in `assets/` that `GameIcon` prefers when present. `assets/` is lowercase and imported by relative path — the case matters, because the Docker image builds on Linux even though macOS would not notice.
+
+## Small screens
+
+Every table is laid out for a phone as well as a desktop, and the two Samurai
+and Monopoly screens carry most of the machinery. The shared parts: the
+safe-area insets are taken **once**, on `.app` in `App.vue`, so no screen laid
+out in the ordinary flow needs `env(safe-area-inset-*)` of its own — but a
+dialog is `position: fixed` and sits outside that box, so each one carries its
+own; `#app` is `100dvh` under an `@supports` guard, because a mobile toolbar
+makes `100%` a moving target; and `@media (pointer: coarse)` in `main.css`
+raises every `.btn` to 44px and `.btn.small` to 2.3rem, which is why individual
+screens do not set touch sizes themselves.
+
+**A breakpoint that exists in two places has to be kept in step.** Samurai
+crosses over at 900px and Monopoly at 960px, and each is written twice: once as
+a `matchMedia`-free `window.innerWidth` check in the component (which decides
+what is *rendered* — a sheet, a tab bar, a teleport target) and once as a media
+query (which decides how it is *laid out*). A resize listener re-answers the
+question on rotation. Changing one without the other is silent.
+
+**Neither game stacks its side columns under the board on a phone.** Both did
+originally, and both left the board a strip a few hexes tall once the topbar,
+the hand and a panel had taken their share. The panels are now sheets that lift
+off the layout: bottom-anchored in portrait, drawers from the right in
+landscape, closed by default, with a scrim. Samurai keeps its existing sidebar
+handle as the way in; Monopoly grew a three-tab bar, where Players and the log
+share one sheet and take turns in it.
+
+**Monopoly's prompt is teleported, not duplicated.** The buy/auction/trade/debt/
+jail/throw chain lives in the middle of the board on a desktop and moves to a
+bar under the board below 960px — the same elements, carried by a `<Teleport>`
+whose target is rendered *before* the board in source and after it by `order`,
+so it exists on the first render. The wrapper is `display: contents` when it is
+not teleported, which is what keeps the desktop centre panel byte-identical. Two
+copies of that chain would be two chances for the table to disagree with the
+server.
+
+**The board's own tiles are sized by a container query, not a media query.**
+`.board` declares `container-type: inline-size`, so `@container (max-width:
+28rem)` asks the question that actually matters — how wide is the *board* — and
+a landscape phone and a narrow desktop window get the same tile by different
+routes. Under that width the price leaves the tile and the tap sheet gives it
+back in full; on a desktop the query never fires.
+
+**A phone has no hover.** Monopoly's space card was `@mouseenter` only; a tap
+now opens the same `SpaceDetail` as a sheet, and the hover handler returns early
+below the breakpoint. Samurai's board has no hover to lose, but its log was
+behind a shut sheet, so `MoveTicker` carries the latest line above the hand and
+a button on it takes the board to the newest tile someone else played
+(`usePanZoom.focusOn`, which never zooms *out*). Both games' log wording goes
+through `src/game/log.ts` so the ticker and the panel read a seat the same way.
+
+## Browser tests
+
+`e2e/` holds a Playwright suite, one spec per game, driving two real browser
+contexts through a whole table. It is **standalone**: its own `package.json`,
+`node_modules` and `tsconfig.json`, and nothing in the app refers to it. Run it
+with `cd e2e && bun install && bunx playwright install chromium && bun run test`.
+
+Two traps live in there. The specs are named `*.e2e.ts` rather than `*.spec.ts`
+because Vitest runs from the repository root and its default include takes every
+`*.spec.ts` under it — a Playwright spec named that way is swept into the unit
+suite and run under jsdom, where `@playwright/test` cannot even be imported. And
+the suite hosts every room with the opening roll-off turned off: it decides
+nothing, but it is a two-second overlay over the table and waiting it out is how
+a suite starts flaking.
+
+It has already earned its keep twice: draft tiles on a phone were overflowing
+their box and sitting on top of Samurai's Confirm button, and every game's
+primary buttons were 38px on a touch screen rather than 44.
 
 ## CI and deployment
 
