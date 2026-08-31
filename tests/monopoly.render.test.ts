@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 
 import MonopolyGameScreen from '../src/components/monopoly/MonopolyGameScreen.vue'
 import { COMPANY_LOGOS, companyLogo } from '../src/game/companies'
-import { money } from '../src/game/money'
+import { money } from '../shared/money'
 import { DEFAULT_OPTIONS } from '../shared/engine'
 import { SPACES, groupSpaces, mortgageValue, priceOf, rentFor } from '../shared/monopoly'
 import type { MonopolyClientState } from '../shared/protocol'
@@ -149,7 +149,7 @@ describe('the Monopoly table', () => {
     const screen = screenFor(r, 'token-0')
     // The starting purse, and a price off the board — both formatted, neither
     // left as a bare ladder number that says nothing about a tech company.
-    expect(screen.text()).toContain('$1.5T')
+    expect(screen.text()).toContain('$1,500B')
     expect(screen.text()).toContain(money(400))
     expect(screen.find('.space-price').exists()).toBe(true)
   })
@@ -322,6 +322,36 @@ describe('the Monopoly table', () => {
   it('shows no card before one has been turned over', () => {
     const r = room()
     expect(screenFor(r, 'token-0').find('.card-drawn').exists()).toBe(false)
+  })
+
+  it('never tells a bankrupt seat it is their turn', () => {
+    const r = room()
+    const mp = r.monopoly!
+    mp.state.owners[1] = 1
+    mp.state.owners[3] = 1
+    mp.state.houses[3] = 5
+    mp.state.players[0].cash = 5
+    mp.state.players[0].pos = 0
+    // Walk seat 0 into a rent it can never raise, on its own turn.
+    for (let seed = 1; seed < 200_000; seed++) {
+      const probe = JSON.parse(JSON.stringify(mp.state))
+      probe.rngPosition = seed
+      const g = Object.create(Object.getPrototypeOf(mp)) as typeof mp
+      g.state = probe
+      g.roll(0)
+      if (g.state.lastRoll?.to === 3) {
+        mp.state.rngPosition = seed
+        break
+      }
+    }
+    mp.roll(0)
+    expect(mp.state.players[0].bankrupt).toBe(true)
+
+    const bust = screenFor(r, 'token-0')
+    expect(bust.text()).not.toContain('Your turn')
+    expect(bust.text()).not.toContain('Throw the dice')
+    // The table has moved on to a seat that can actually play.
+    expect(view(r, 'token-0').current).not.toBe(0)
   })
 
   it('announces the winner and offers the host another game', () => {
