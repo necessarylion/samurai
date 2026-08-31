@@ -221,7 +221,11 @@ function throwDie(face: number) {
   const start = performance.now()
   const last = frames.length - 1
   const tick = (now: number) => {
-    const t = Math.min(1, (now - start) / props.durationMs)
+    // Clamped at both ends, not just the top. `now` is the frame's start time,
+    // which can be *earlier* than the `performance.now()` taken when the throw
+    // was set up — so the first tick can hand back a negative `t`, and an
+    // unclamped one indexes `frames` from the wrong end and reads undefined.
+    const t = Math.max(0, Math.min(1, (now - start) / props.durationMs))
     const f = frames[Math.min(last, Math.floor(t * last))]
     die.position.set(f.p.x, f.p.y, f.p.z)
     die.quaternion.set(f.q.x, f.q.y, f.q.z, f.q.w)

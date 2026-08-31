@@ -30,6 +30,7 @@ const MASTHEAD = {
   cop: { title: 'landing.cop.name', tagline: 'home.cop.tagline', hint: 'home.cop.hostHint' },
   snake: { title: 'landing.snake.name', tagline: 'home.snake.tagline', hint: 'home.snake.hostHint' },
   ladders: { title: 'landing.ladders.name', tagline: 'home.ladders.tagline', hint: 'home.ladders.hostHint' },
+  monopoly: { title: 'landing.monopoly.name', tagline: 'home.monopoly.tagline', hint: 'home.monopoly.hostHint' },
 } as const
 
 const masthead = computed(() => MASTHEAD[kind.value])
@@ -81,20 +82,21 @@ function join() {
 
     <aside
       class="art"
-      :class="{ halli: kind === 'halligalli', coup: kind === 'coup', carnivals: kind === 'carnivals', cop: kind === 'cop', snake: kind === 'snake', ladders: kind === 'ladders' }"
+      :class="{ halli: kind === 'halligalli', coup: kind === 'coup', carnivals: kind === 'carnivals', cop: kind === 'cop', snake: kind === 'snake', ladders: kind === 'ladders', monopoly: kind === 'monopoly' }"
     >
       <img class="art-image" :src="GAME_ART[kind]" alt="" />
       <div class="art-wash"></div>
       <header class="masthead">
         <span
           class="seal"
-          :class="{ fruits: kind === 'halligalli', crown: kind === 'coup', tent: kind === 'carnivals', siren: kind === 'cop', serpent: kind === 'snake', die: kind === 'ladders' }"
+          :class="{ fruits: kind === 'halligalli', crown: kind === 'coup', tent: kind === 'carnivals', siren: kind === 'cop', serpent: kind === 'snake', die: kind === 'ladders', terrace: kind === 'monopoly' }"
         >
           <GameIcon v-if="kind === 'coup'" name="coup.duke" :size="22" />
           <template v-else-if="kind === 'carnivals'">🎪</template>
           <template v-else-if="kind === 'cop'">🚔</template>
           <template v-else-if="kind === 'snake'">🐍</template>
           <template v-else-if="kind === 'ladders'">🎲</template>
+          <template v-else-if="kind === 'monopoly'">🏠</template>
           <template v-else>{{ isSamurai ? '侍' : '🔔' }}</template>
         </span>
         <h1>{{ t(masthead.title) }}</h1>
@@ -282,6 +284,10 @@ function join() {
   background: linear-gradient(160deg, #b23a2c 0%, #d4a017 45%, #1e6f86 100%);
 }
 
+.art.monopoly {
+  background: linear-gradient(160deg, #e9d7b4 0%, #9d7d5f 50%, #2c241c 100%);
+}
+
 .back {
   margin: 0 0 1rem !important;
 }
@@ -344,6 +350,11 @@ function join() {
 
 .seal.serpent {
   background: linear-gradient(140deg, #17482a, #2f7a45);
+  font-size: 1.5rem;
+}
+
+.seal.terrace {
+  background: linear-gradient(140deg, #8a6f52, #2c241c);
   font-size: 1.5rem;
 }
 

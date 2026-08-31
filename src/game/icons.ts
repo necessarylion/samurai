@@ -228,6 +228,16 @@ export const ICONS: Record<string, string> = {
     <path d="M19 9H6.65856C5.65277 9 5.14987 9 5.02472 8.69134C4.89957 8.38268 5.25517 8.01942 5.96637 7.29289L8.21091 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M5 15H17.3414C18.3472 15 18.8501 15 18.9753 15.3087C19.1004 15.6173 18.7448 15.9806 18.0336 16.7071L15.7891 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   `,
+
+  // Monopoly's board marks. Back to solid silhouettes, like the Samurai set
+  // above and for the same reason: these are drawn as small as 12px along the
+  // edge of the board, where a stroke icon closes up into a smudge.
+  'monopoly.house': `<path d="M12 3.2 2.6 11.4h2.6v9.4h5.1v-5.3h3.4v5.3h5.1v-9.4h2.6z"/>`,
+  'monopoly.hotel': `<path d="M3.4 20.8V7.6l7-4.4 7 4.4v13.2zm2.8-9.6h2.6V8.6H6.2zm4.8 0h2.6V8.6H11zm-4.8 4.8h2.6v-2.6H6.2zm4.8 0h2.6v-2.6H11zm8.2 5.1h1.9V9.9h-3.1v10.9zm-8.2 0h2.6v-3.9H11z"/>`,
+  'monopoly.station': `<path d="M6.6 2.4h10.8a2 2 0 0 1 2 2v9.9a2 2 0 0 1-2 2H6.6a2 2 0 0 1-2-2V4.4a2 2 0 0 1 2-2m.4 3v4.3h10V5.4zm.9 8.3a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6m8.2 0a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6M5.9 17.6h12.2l2.1 4h-2.9l-1-2H7.7l-1 2H3.8z"/>`,
+  'monopoly.utility': `<path d="M13.4 1.6 4.9 13.1h5.4l-1.7 9.3 8.5-11.5h-5.4z"/>`,
+  'monopoly.deed': `<path d="M5.4 2.2h13.2a1 1 0 0 1 1 1v17.6a1 1 0 0 1-1 1H5.4a1 1 0 0 1-1-1V3.2a1 1 0 0 1 1-1m1.4 3.1v3.3h10.4V5.3zm0 6v1.8h10.4v-1.8zm0 4.1v1.8h7.6v-1.8z"/>`,
+  'monopoly.jail': `<path d="M3.6 3.4h2.2v17.2H3.6zm4.6 0h2.2v17.2H8.2zm4.6 0H15v17.2h-2.2zm4.6 0h2.2v17.2h-2.2zM2.2 10.9h19.6v2.2H2.2z"/>`,
 }
 
 export type IconName = keyof typeof ICONS

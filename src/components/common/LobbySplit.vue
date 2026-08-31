@@ -29,6 +29,7 @@ const GLYPHS: Record<GameKind, string> = {
   cop: '🚔',
   snake: '🐍',
   ladders: '🎲',
+  monopoly: '🏠',
 }
 
 const game = useGameStore()

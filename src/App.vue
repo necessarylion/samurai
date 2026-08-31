@@ -16,6 +16,8 @@ import LaddersGameScreen from './components/ladders/LaddersGameScreen.vue'
 import LaddersLobby from './components/ladders/LaddersLobby.vue'
 import LandingScreen from './components/common/LandingScreen.vue'
 import LobbyScreen from './components/samurai/LobbyScreen.vue'
+import MonopolyGameScreen from './components/monopoly/MonopolyGameScreen.vue'
+import MonopolyLobby from './components/monopoly/MonopolyLobby.vue'
 import SnakeGameScreen from './components/snake/SnakeGameScreen.vue'
 import SnakeLobby from './components/snake/SnakeLobby.vue'
 import { useOpeningRoll } from './composables/useOpeningRoll'
@@ -104,6 +106,11 @@ onMounted(() => game.connect())
     <template v-else-if="game.kind === 'ladders'">
       <LaddersLobby v-if="game.phase === 'lobby'" />
       <LaddersGameScreen v-else />
+    </template>
+
+    <template v-else-if="game.kind === 'monopoly'">
+      <MonopolyLobby v-if="game.phase === 'lobby'" />
+      <MonopolyGameScreen v-else />
     </template>
 
     <LobbyScreen v-else-if="game.phase === 'lobby'" />

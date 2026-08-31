@@ -1,0 +1,336 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { mount } from '@vue/test-utils'
+
+import MonopolyGameScreen from '../src/components/monopoly/MonopolyGameScreen.vue'
+import { COMPANY_LOGOS, companyLogo } from '../src/game/companies'
+import { money } from '../src/game/money'
+import { DEFAULT_OPTIONS } from '../shared/engine'
+import { SPACES, groupSpaces, mortgageValue, priceOf, rentFor } from '../shared/monopoly'
+import type { MonopolyClientState } from '../shared/protocol'
+import { Room } from '../server/rooms'
+import { useGameStore } from '../src/stores/game'
+
+/**
+ * Monopoly's table carries rules of its own, which is the bar for a game having
+ * its own render suite: which of the auction, trade and building controls a seat
+ * sees is decided per viewer, and offering the wrong one hands someone a button
+ * the engine is about to refuse.
+ */
+function room(seats = 3): Room {
+  const r = new Room('TEST')
+  r.options = { ...DEFAULT_OPTIONS, kind: 'monopoly', diceStart: false }
+  const names = ['Ada', 'Bo', 'Cy']
+  for (let i = 0; i < seats; i++) r.addSeat(`token-${i}`, names[i])
+  r.start()
+  r.monopoly!.state.current = 0
+  return r
+}
+
+const view = (r: Room, token: string) => r['stateFor'](token) as MonopolyClientState
+
+/** Mount the table as one seat sees it. */
+function screenFor(r: Room, token: string) {
+  const store = useGameStore()
+  store.monopoly = view(r, token)
+  return mount(MonopolyGameScreen)
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  localStorage.clear()
+})
+
+describe('the Monopoly table', () => {
+  it('draws all forty spaces on the ring, Go at the bottom right', () => {
+    const r = room()
+    const screen = screenFor(r, 'token-0')
+    expect(screen.findAll('.space')).toHaveLength(40)
+    const go = screen.findAll('.space')[0]
+    expect(go.attributes('style')).toContain('grid-column: 11')
+    expect(go.attributes('style')).toContain('grid-row: 11')
+    expect(screen.text()).toContain(SPACES[1].name)
+  })
+
+  it('offers the throw to the seat whose turn it is, and to nobody else', () => {
+    const r = room()
+    expect(screenFor(r, 'token-0').text()).toContain('Throw the dice')
+    const waiting = screenFor(r, 'token-1')
+    expect(waiting.text()).not.toContain('Throw the dice')
+    expect(waiting.text()).toContain('Ada to play')
+  })
+
+  it('shows the buy prompt only to the seat standing on the space', () => {
+    const r = room()
+    r.monopoly!.state.pending = [{ step: 'buy', player: 0, space: 3 }]
+    const lander = screenFor(r, 'token-0')
+    expect(lander.text()).toContain('Buy for')
+    expect(lander.text()).toContain('Send to auction')
+
+    const other = screenFor(r, 'token-1')
+    expect(other.text()).not.toContain('Buy for')
+    expect(other.text()).toContain('is deciding whether to buy')
+  })
+
+  it('gives an auction its bid box to every seat still in, and not to one that dropped out', () => {
+    const r = room()
+    r.monopoly!.state.pending = [
+      { step: 'auction', space: 3, high: 40, highBidder: 1, passed: [1, 2] },
+    ]
+    const bidding = screenFor(r, 'token-0')
+    expect(bidding.find('input.bid').exists()).toBe(true)
+    expect(bidding.text()).toContain('Standing bid $40B from Bo')
+
+    // Seat 2 has passed under the standing bid, so it is out of this window.
+    const out = screenFor(r, 'token-2')
+    expect(out.find('input.bid').exists()).toBe(false)
+    expect(out.text()).toContain('dropped out')
+  })
+
+  it('shows a trade’s terms to the two seats it is between, and not to the table', () => {
+    const r = room()
+    r.monopoly!.state.owners[1] = 0
+    r.monopoly!.offerTrade(0, 1, { spaces: [1], cash: 0 }, { spaces: [], cash: 75 })
+
+    const partner = screenFor(r, 'token-1')
+    expect(partner.text()).toContain(SPACES[1].name)
+    expect(partner.text()).toContain('75')
+    expect(partner.text()).toContain('Accept')
+
+    const bystander = screenFor(r, 'token-2')
+    expect(bystander.text()).toContain('are talking terms')
+    expect(bystander.text()).not.toContain('Accept')
+  })
+
+  it('lists your own property with the actions the engine allows on it', () => {
+    const r = room()
+    const spaces = groupSpaces('brown')
+    r.monopoly!.state.owners[spaces[0]] = 0
+    const partial = screenFor(r, 'token-0')
+    expect(partial.text()).toContain(SPACES[spaces[0]].name)
+    // One of the pair is not a whole sector, so there is nothing to expand yet.
+    expect(partial.text()).not.toContain('Expand')
+    expect(partial.text()).toContain('Mortgage')
+
+    r.monopoly!.state.owners[spaces[1]] = 0
+    expect(screenFor(r, 'token-0').text()).toContain('Expand')
+    // The panel is the viewer's own, so it stays empty for a seat owning nothing.
+    expect(screenFor(r, 'token-1').text()).toContain('You own nothing yet')
+  })
+
+  it('puts the antitrust choices in front of the seat under review only', () => {
+    const r = room()
+    r.monopoly!.state.players[0].jailed = true
+    r.monopoly!.state.pending = [{ step: 'jail', player: 0 }]
+    const jailed = screenFor(r, 'token-0')
+    expect(jailed.text()).toContain('You are under antitrust review')
+    expect(jailed.text()).toContain('Pay 50')
+    // No card in hand, so that door stays shut.
+    expect(jailed.find('button:disabled').exists()).toBe(true)
+    expect(screenFor(r, 'token-1').text()).not.toContain('You are under antitrust review')
+  })
+
+  it('puts a debtor in front of their bill, and lets nobody else settle it', () => {
+    const r = room()
+    r.monopoly!.state.pending = [{ step: 'debt', player: 0, amount: 240, creditor: 1 }]
+    const debtor = screenFor(r, 'token-0')
+    expect(debtor.text()).toContain('You owe $240B')
+    expect(debtor.text()).toContain('Declare bankruptcy')
+
+    const other = screenFor(r, 'token-1')
+    expect(other.text()).not.toContain('Declare bankruptcy')
+    expect(other.text()).toContain('is raising the money')
+    expect(other.text()).toContain('$240B')
+  })
+
+  it('writes every figure in the same money unit, legibly', () => {
+    const r = room()
+    const screen = screenFor(r, 'token-0')
+    // The starting purse, and a price off the board — both formatted, neither
+    // left as a bare ladder number that says nothing about a tech company.
+    expect(screen.text()).toContain('$1.5T')
+    expect(screen.text()).toContain(money(400))
+    expect(screen.find('.space-price').exists()).toBe(true)
+  })
+
+  it('insets a space past its colour band, so nothing is printed on the stripe', () => {
+    // The price used to be laid straight over the band, dark ink on a saturated
+    // stripe, which is unreadable. Each run of the ring insets on its own side.
+    const r = room()
+    const cells = screenFor(r, 'token-0').findAll('.space')
+    expect(cells[1].classes()).toContain('side-bottom')
+    expect(cells[21].classes()).toContain('side-top')
+    expect(cells[11].classes()).toContain('side-left')
+    expect(cells[31].classes()).toContain('side-right')
+  })
+
+  it('marks who owns what and what is built on it', () => {
+    const r = room()
+    const spaces = groupSpaces('brown')
+    r.monopoly!.state.owners[spaces[0]] = 1
+    r.monopoly!.state.houses[spaces[0]] = 2
+    r.monopoly!.state.mortgaged[spaces[1]] = true
+    r.monopoly!.state.owners[spaces[1]] = 1
+    const screen = screenFor(r, 'token-0')
+    const cells = screen.findAll('.space')
+    expect(cells[spaces[0]].classes()).toContain('owned')
+    expect(cells[spaces[0]].findAll('.builds svg')).toHaveLength(2)
+    expect(cells[spaces[1]].classes()).toContain('mortgaged')
+  })
+
+  it('gives every company a logo, and only the companies', () => {
+    // Every street on the board has to have a logo, or a space renders bare next
+    // to its neighbours; nothing else should, because the corners and the card
+    // spaces carry a glyph instead.
+    for (const [n, space] of SPACES.entries()) {
+      const logo = companyLogo(space.name)
+      if (space.kind === 'street') expect(logo, `${space.name} (${n})`).not.toBeNull()
+      else expect(logo, `${space.name} (${n})`).toBeNull()
+    }
+    expect(Object.keys(COMPANY_LOGOS)).toHaveLength(22)
+  })
+
+  it('draws each logo in its own colours, not one shared ink', () => {
+    const marks = new Set(Object.values(COMPANY_LOGOS).map((l) => l.svg))
+    expect(marks.size).toBe(22)
+    // A brand's own colour has to actually appear in its drawing, or the logo is
+    // the right shape in the wrong paint.
+    for (const [name, logo] of Object.entries(COMPANY_LOGOS)) {
+      expect(logo.svg.toUpperCase(), name).toContain(logo.tint.toUpperCase())
+    }
+  })
+
+  it('renders the logo as an element on the space, not as a background', () => {
+    const r = room()
+    const cells = screenFor(r, 'token-0').findAll('.space')
+    // Apple at 39 is a company; the IPO at 0 is a corner.
+    const logo = cells[39].find('svg.company-logo')
+    expect(logo.exists()).toBe(true)
+    expect(logo.attributes('aria-label')).toBe('Apple')
+    // The mark is real markup, so it can be styled and read — not a data URI
+    // baked into a background image.
+    expect(logo.html()).toContain('path')
+    expect(cells[39].attributes('style')).not.toContain('data:image/svg+xml')
+    expect(cells[0].find('svg.company-logo').exists()).toBe(false)
+  })
+
+  it('gives the table a dice tray, and narrates both dice of a throw', () => {
+    const r = room()
+    // The dice themselves are an async component pulling in three.js, which
+    // never resolves under jsdom — so this checks the tray they mount into and
+    // the narration, which is where both faces of the pair actually surface.
+    expect(screenFor(r, 'token-0').find('.dice').exists()).toBe(true)
+
+    r.monopoly!.state.lastRoll = {
+      player: 0,
+      dice: [3, 5],
+      from: 0,
+      to: 8,
+      passedGo: false,
+      doubles: false,
+    }
+    expect(screenFor(r, 'token-0').text()).toContain('Ada threw 3 and 5')
+  })
+
+  it('has no dice tray once the game is over', () => {
+    const r = room(2)
+    r.monopoly!.state.phase = 'over'
+    r.monopoly!.state.result = { winner: 0, standings: [0, 1], reason: 'test' }
+    expect(screenFor(r, 'token-0').find('.dice').exists()).toBe(false)
+  })
+
+  it('shows what a property earns and what each action pays, not just its name', () => {
+    const r = room()
+    const [a, b, c] = groupSpaces('pink')
+    r.monopoly!.state.owners[a] = 0
+    const deed = screenFor(r, 'token-0').find('.deed')
+    expect(deed.exists()).toBe(true)
+
+    // The company's own logo, so the panel scans the way the board does.
+    expect(deed.find('svg.company-logo').attributes('aria-label')).toBe(SPACES[a].name)
+    expect(deed.text()).toContain(SPACES[a].name)
+    // Its price, and what it charges as things stand — a bare company in a part
+    // owned sector, so single rent rather than the doubled rate.
+    expect(deed.text()).toContain(`$${priceOf(a)}B`)
+    expect(deed.text()).toContain(`$${rentFor(r.monopoly!.state, a, 0)}B`)
+    // And what mortgaging would actually pay, on the button itself.
+    expect(deed.text()).toContain(`+$${mortgageValue(a)}B`)
+
+    // One pip per space in the sector, filled for the ones held.
+    expect(deed.findAll('.pip')).toHaveLength(3)
+    expect(deed.findAll('.pip.on')).toHaveLength(1)
+
+    // Completing the sector fills every pip and marks the card.
+    r.monopoly!.state.owners[b] = 0
+    r.monopoly!.state.owners[c] = 0
+    const whole = screenFor(r, 'token-0').find('.deed')
+    expect(whole.findAll('.pip.on')).toHaveLength(3)
+    expect(whole.classes()).toContain('complete')
+    // A bare company in a full sector charges double, which the panel must say.
+    expect(whole.text()).toContain(`$${rentFor(r.monopoly!.state, a, 0)}B`)
+  })
+
+  it('explains an action rather than only naming it', () => {
+    const r = room()
+    r.monopoly!.state.owners[groupSpaces('pink')[0]] = 0
+    const buttons = screenFor(r, 'token-0').findAll('.deed-actions button')
+    expect(buttons.length).toBeGreaterThan(0)
+    // Every action carries hover text saying what it does — "Mortgage" on its
+    // own is a word a player is not required to already know.
+    for (const button of buttons) {
+      expect(button.attributes('title') ?? '').not.toBe('')
+    }
+    const mortgage = buttons.find((x) => x.text().includes('Mortgage'))!
+    expect(mortgage.attributes('title')).toContain('earns no rent')
+  })
+
+  it('marks a mortgaged property and offers the way back', () => {
+    const r = room()
+    const space = groupSpaces('pink')[0]
+    r.monopoly!.state.owners[space] = 0
+    r.monopoly!.state.mortgaged[space] = true
+    const deed = screenFor(r, 'token-0').find('.deed')
+    expect(deed.classes()).toContain('mortgaged')
+    expect(deed.text()).toContain('Mortgaged')
+    // A mortgaged space charges nothing, so no rent figure is claimed for it.
+    expect(deed.text()).not.toContain('Rent $')
+    expect(deed.text()).toContain('Lift mortgage')
+  })
+
+  it('deals a drawn card onto the table, keyed so the animation replays', () => {
+    const r = room()
+    const mp = r.monopoly!
+    mp.state.lastCard = { deck: 'chance', text: 'Your lock-up expires.', player: 0 }
+    mp.state.cardCount = 1
+    const first = screenFor(r, 'token-0')
+    const card = first.find('.card-drawn')
+    expect(card.exists()).toBe(true)
+    expect(card.classes()).toContain('chance')
+    expect(card.text()).toContain('Your lock-up expires.')
+    // The card names whose draw it was, which is the whole point of showing it
+    // to the table rather than only to the player who drew it.
+    expect(card.text()).toContain('Ada')
+
+    // The other deck is marked differently, so which was turned over reads
+    // before the words do.
+    mp.state.lastCard = { deck: 'chest', text: 'An acquihire pays out.', player: 1 }
+    mp.state.cardCount = 2
+    expect(screenFor(r, 'token-0').find('.card-drawn').classes()).toContain('chest')
+  })
+
+  it('shows no card before one has been turned over', () => {
+    const r = room()
+    expect(screenFor(r, 'token-0').find('.card-drawn').exists()).toBe(false)
+  })
+
+  it('announces the winner and offers the host another game', () => {
+    const r = room(2)
+    r.monopoly!.state.phase = 'over'
+    r.monopoly!.state.result = { winner: 1, standings: [1, 0], reason: 'test' }
+    r.monopoly!.state.players[0].bankrupt = true
+    const screen = screenFor(r, 'token-0')
+    expect(screen.text()).toContain('Bo wins!')
+    expect(screen.text()).toContain('Play again')
+  })
+})

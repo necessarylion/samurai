@@ -14,6 +14,7 @@ import {
   type CoupClientState,
   type HalliClientState,
   type LaddersClientState,
+  type MonopolyClientState,
   type ServerMessage,
   type SnakeClientState,
 } from '@shared/protocol'
@@ -24,6 +25,7 @@ import { createCop } from './cop/useCop'
 import { createCoup } from './coup/useCoup'
 import { createHalliGalli } from './halli_galli/useHalliGalli'
 import { createLadders } from './ladders/useLadders'
+import { createMonopoly } from './monopoly/useMonopoly'
 import { createSamurai } from './samurai/useSamurai'
 import { createSnake } from './snake/useSnake'
 
@@ -104,6 +106,8 @@ export const useGameStore = defineStore('game', () => {
   const snake = ref<SnakeClientState | null>(null)
   /** Snakes & Ladders' wire state; null while another game's table is on screen. */
   const ladders = ref<LaddersClientState | null>(null)
+  /** Monopoly's wire state; null while another game's table is on screen. */
+  const monopoly = ref<MonopolyClientState | null>(null)
   /** Whichever game's state is current, for the fields they all share. */
   const room = computed<AnyClientState | null>(
     () =>
@@ -113,7 +117,8 @@ export const useGameStore = defineStore('game', () => {
       carnival.value ??
       cop.value ??
       snake.value ??
-      ladders.value,
+      ladders.value ??
+      monopoly.value,
   )
   /**
    * Which game the player picked on the landing screen, before any room exists.
@@ -312,6 +317,7 @@ export const useGameStore = defineStore('game', () => {
     cop.value = null
     snake.value = null
     ladders.value = null
+    monopoly.value = null
   }
 
   function handle(message: ServerMessage) {
@@ -354,6 +360,7 @@ export const useGameStore = defineStore('game', () => {
         else if (incoming.kind === 'cop') cop.value = incoming
         else if (incoming.kind === 'snake') snake.value = incoming
         else if (incoming.kind === 'ladders') ladders.value = incoming
+        else if (incoming.kind === 'monopoly') monopoly.value = incoming
         else state.value = incoming
         reclaimSeat(incoming)
         break
@@ -410,6 +417,7 @@ export const useGameStore = defineStore('game', () => {
   const copGame = createCop({ cop, you, send })
   const snakeGame = createSnake({ snake, you, isPaused, send })
   const laddersGame = createLadders({ ladders, you, isPaused, send })
+  const monopolyGame = createMonopoly({ monopoly, you, isPaused, send })
 
   // --- room actions --------------------------------------------------------
   /** Bring the seat back to this tab after another one took it over. */
@@ -495,6 +503,7 @@ export const useGameStore = defineStore('game', () => {
     cop,
     snake,
     ladders,
+    monopoly,
     room,
     kind,
     chosenGame,
@@ -532,5 +541,7 @@ export const useGameStore = defineStore('game', () => {
     ...snakeGame,
     // Snakes & Ladders
     ...laddersGame,
+    // Monopoly
+    ...monopolyGame,
   }
 })
