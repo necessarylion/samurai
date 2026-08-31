@@ -1,12 +1,30 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import GameIcon from '../common/GameIcon.vue'
 import TileGlyph from './TileGlyph.vue'
-import { t, tileKindLabel, tileTitle } from '@/i18n'
+import { CASTE_COLOURS } from '@shared/colours'
+import { CASTES, type Caste } from '@shared/types'
+import { castePiece, t, tileKindLabel, tileTitle } from '@/i18n'
 import { useGameStore } from '@/stores/game'
 
 const game = useGameStore()
 
 const SIZE = 30
+
+/**
+ * What this player has taken so far, by caste. It is in the seat rows of the
+ * players panel too — but on a narrow screen that panel is a sheet that is shut
+ * for most of the game, and a player's own score is not something to have to go
+ * looking for. Laid out only there; see the stylesheet.
+ *
+ * The server always sends the viewer their own captures, whatever the table's
+ * information setting, so this is never a leak.
+ */
+const claimed = computed(() => {
+  const counts: Record<Caste, number> = { buddha: 0, rice: 0, castle: 0 }
+  for (const caste of game.state?.captured ?? []) counts[caste]++
+  return counts
+})
 const playable = computed(() => new Set(game.playableTileIds))
 const selectedId = computed(() =>
   'tileId' in game.interaction ? game.interaction.tileId : null,
@@ -43,6 +61,30 @@ const prompt = computed(() => {
         <span class="hand-title">{{ t('hand.title') }}</span>
         <span class="tiny muted"> {{ t('hand.stackLeft', { count: game.me?.stackCount ?? 0 }) }}</span>
       </div>
+
+      <!-- Your own score, for a screen with the players panel shut. -->
+      <ul class="claimed" :aria-label="t('hand.claimed')">
+        <li class="tiny muted claimed-label">{{ t('hand.claimed') }}</li>
+        <li
+          v-for="caste in CASTES"
+          :key="caste"
+          :data-claimed="caste"
+          :title="castePiece(caste)"
+          :aria-label="`${castePiece(caste)}: ${claimed[caste]}`"
+        >
+          <span
+            class="caste-disc"
+            :style="{
+              background: CASTE_COLOURS[caste].fill,
+              borderColor: CASTE_COLOURS[caste].ink,
+            }"
+          >
+            <GameIcon :name="caste" :size="12" />
+          </span>
+          <strong>{{ claimed[caste] }}</strong>
+        </li>
+      </ul>
+
       <p class="prompt tiny">{{ prompt }}</p>
     </div>
 
@@ -134,6 +176,44 @@ const prompt = computed(() => {
   color: var(--ink-soft);
 }
 
+/* Off on a wide screen, where the players panel is a column beside the board
+   and already carries this seat's captures. Turned on with the rest of the
+   narrow layout below. */
+.claimed {
+  display: none;
+  align-items: center;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.claimed li {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.claimed-label {
+  letter-spacing: 0.02em;
+}
+
+.claimed strong {
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+}
+
+/* The disc a piece sits on, on the board and in the topbar tallies. */
+.caste-disc {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  border: 1px solid;
+  flex: none;
+}
+
 .tiles {
   display: flex;
   gap: 0.3rem;
@@ -153,8 +233,13 @@ const prompt = computed(() => {
   transition: transform 0.12s ease, background 0.12s ease;
 }
 
-.tile-btn:hover:not(:disabled) {
-  transform: translateY(-3px);
+/* A lift that answers the pointer. Guarded, because a touch browser leaves the
+   hover on the last tile tapped and it would sit raised for the rest of the
+   turn — the selected state below is what marks a tile on a phone. */
+@media (hover: hover) {
+  .tile-btn:hover:not(:disabled) {
+    transform: translateY(-3px);
+  }
 }
 
 .tile-btn.selected {
@@ -185,5 +270,77 @@ const prompt = computed(() => {
 
 .empty {
   margin: 0 0.5rem;
+}
+
+/* --- narrow screens ------------------------------------------------------- */
+
+/*
+ * Three full-width rows rather than one row wrapping into five: the prompt
+ * beside the title, the hand as a strip that scrolls sideways however many
+ * tiles are in it, and the actions across the foot where a thumb is. Holding
+ * the tiles to a single row is what stops the hand eating the board.
+ */
+@media (max-width: 900px) {
+  .hand {
+    gap: 0.35rem 0.6rem;
+    padding: 0.5rem clamp(0.6rem, 3vw, 1.5rem);
+  }
+
+  .hand-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.1rem 0.5rem;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .prompt {
+    margin: 0;
+    /* After the claim, on its own line if the two will not share one. */
+    flex: 1 1 100%;
+  }
+
+  .claimed {
+    display: flex;
+  }
+
+  .tiles {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    /* Room for the lift a selected tile takes, which the scroll box would clip. */
+    padding: 3px 0;
+  }
+
+  .tile-btn {
+    flex: none;
+  }
+
+  .hand-actions {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  /* On a phone these are the only buttons in the game; they get the full width. */
+  .hand-actions .btn {
+    flex: 1 1 auto;
+  }
+}
+
+/* Rotated, it is height that is short, so the tiles give back a little of their
+   art — they stay well over the 44px a fingertip needs. */
+@media (max-width: 900px) and (max-height: 30rem) {
+  .hand {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .tile-btn svg {
+    width: 2.75rem;
+    height: 3.05rem;
+  }
 }
 </style>

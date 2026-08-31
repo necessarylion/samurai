@@ -264,4 +264,31 @@ ol li {
     max-width: 34rem;
   }
 }
+
+/* A phone gives the sheet the whole screen bar a hairline. The backdrop is
+   `position: fixed`, so it sits outside the insets `.app` takes and has to keep
+   itself clear of the notch on its own. */
+@media (max-width: 46rem) {
+  .backdrop {
+    padding: max(0.6rem, env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right))
+      max(0.6rem, env(safe-area-inset-bottom)) max(0.6rem, env(safe-area-inset-left));
+  }
+
+  .sheet {
+    width: 100%;
+    max-height: 100%;
+  }
+
+  .head {
+    padding: 0.7rem 0.9rem;
+  }
+
+  .body {
+    padding: 0.9rem 0.9rem 1.1rem;
+  }
+
+  h2 {
+    font-size: 1.15rem;
+  }
+}
 </style>

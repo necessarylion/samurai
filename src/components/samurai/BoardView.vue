@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import GameIcon from '../common/GameIcon.vue'
 import TileGlyph from './TileGlyph.vue'
 import { flyGhost } from '@/composables/useFlight'
+import { useFullscreen } from '@/composables/useFullscreen'
 import { usePanZoom, type Bounds } from '@/composables/usePanZoom'
 import { CASTE_COLOURS, PLAYER_COLOURS } from '@shared/colours'
 import { hexCentre, hexPolygon, hexRoundedPath, type Point } from '@shared/hex'
@@ -12,6 +13,12 @@ import { t } from '@/i18n'
 import { useGameStore } from '@/stores/game'
 
 const game = useGameStore()
+
+/* A view control like the zoom, so it lives with them rather than in the topbar
+   — which on a phone has no room for a fourth button. Shown only on a touch
+   screen (see the stylesheet), where the browser's chrome is worth reclaiming
+   and there is no F11 to do it with. */
+const fullscreen = useFullscreen()
 
 const HEX = 34 // circumradius in SVG units
 const PAD = HEX * 1.2
@@ -46,9 +53,73 @@ const bounds = computed<Bounds>(() => {
   return { x, y, width: Math.max(...xs) + PAD - x, height: Math.max(...ys) + PAD - y }
 })
 
+/*
+ * A pointy-top hex is √3 circumradii across, so a whole board fitted into a
+ * phone draws each one at a dozen pixels or so — readable, but not something a
+ * fingertip can land on. The view opens zoomed far enough to make a hex
+ * tappable and no further than the cap, past which a six-player board would
+ * open showing one corner of itself. A roomy window meets the floor at the
+ * plain fit and so opens exactly as it always has.
+ */
+const MIN_HEX_PX = 30
+const OPEN_ZOOM_CAP = 1.8
+/** Big enough to read the tile that was played, not just find the hex. */
+const SHOW_HEX_PX = 58
+
 const frame = ref<HTMLElement | null>(null)
-const { viewBox, zoom, dragging, canZoomIn, canZoomOut, reset, zoomIn, zoomOut, handlers, onClickCapture } =
-  usePanZoom(frame, bounds)
+const {
+  viewBox,
+  zoom,
+  dragging,
+  canZoomIn,
+  canZoomOut,
+  reset,
+  focusOn,
+  zoomIn,
+  zoomOut,
+  handlers,
+  onClickCapture,
+} = usePanZoom(frame, bounds, {
+  minUnitPx: MIN_HEX_PX / (HEX * Math.sqrt(3)),
+  maxOpenZoom: OPEN_ZOOM_CAP,
+})
+
+/**
+ * The hex the ticker last sent the board to, and how many times it has been
+ * asked. Bringing a space into view is only half the answer — the board looks
+ * much the same wherever it is pointed, and the seat's own mark on the hex is
+ * one of several on screen. So the tile is struck with a ring of its own for a
+ * few seconds, which is what makes it the one thing being pointed at.
+ *
+ * The count is what lets the same space be found twice over: remounting the
+ * mark is what restarts its animation, and Vue will not remount an element
+ * whose key has not changed.
+ */
+const FOUND_MS = 3600
+const found = ref<string | null>(null)
+const foundCount = ref(0)
+let foundTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Bring one space into view and mark it. Called from the move ticker on a
+ * narrow screen, where a tile played on the far side of the board is something
+ * the player would otherwise have to go hunting for.
+ */
+function showSpace(spaceId: string) {
+  const space = game.board.spaces[spaceId]
+  if (!space) return
+  focusOn(hexCentre(space.q, space.r, HEX), SHOW_HEX_PX / (HEX * Math.sqrt(3)))
+  found.value = spaceId
+  foundCount.value++
+  if (foundTimer) clearTimeout(foundTimer)
+  foundTimer = setTimeout(() => (found.value = null), FOUND_MS)
+}
+
+onUnmounted(() => {
+  if (foundTimer) clearTimeout(foundTimer)
+})
+
+defineExpose({ showSpace })
 
 const pieces = computed(() => game.state?.pieces ?? {})
 const placed = computed(() => game.state?.placed ?? {})
@@ -310,6 +381,16 @@ function isSurroundedNow(space: Space): boolean {
             :y="cell.centre.y"
           />
         </g>
+
+        <!--
+          The tile the ticker was asked to find. Drawn last so it rings the tile
+          rather than sitting under it, and keyed on the count so asking twice
+          strikes it twice. Decoration, so no clicks.
+        -->
+        <g v-if="found === cell.space.id" :key="`found${foundCount}`" class="found">
+          <path :d="cell.outline" class="found-ring" />
+          <path :d="cell.outline" class="found-ripple" />
+        </g>
       </g>
     </svg>
 
@@ -340,6 +421,24 @@ function isSurroundedNow(space: Space): boolean {
         @click="reset"
       >
         {{ t('board.fitShort') }}
+      </button>
+
+      <!-- Absent where the browser has no fullscreen to give — an iPhone, most
+           of all, where Safari keeps the API for video. -->
+      <button
+        v-if="fullscreen.supported"
+        class="zoom-btn fullscreen"
+        :title="fullscreen.active.value ? t('board.exitFullscreen') : t('board.fullscreen')"
+        :aria-label="fullscreen.active.value ? t('board.exitFullscreen') : t('board.fullscreen')"
+        :aria-pressed="fullscreen.active.value"
+        @click="fullscreen.toggle()"
+      >
+        <!-- Corners pointing out to go, and in to come back. Drawn rather than
+             set, so it needs nothing of whatever font the phone has. -->
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path v-if="!fullscreen.active.value" d="M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5" />
+          <path v-else d="M9 4v5H4 M20 9h-5V4 M15 20v-5h5 M4 15h5v5" />
+        </svg>
       </button>
     </div>
     <p v-if="zoom > 1.02" class="zoom-badge tiny">{{ Math.round(zoom * 100) }}%</p>
@@ -401,6 +500,28 @@ function isSurroundedNow(space: Space): boolean {
   font-size: 0.72rem;
   font-family: var(--font-display);
   letter-spacing: 0.04em;
+}
+
+/* Off on a pointer device, which has the browser's own fullscreen key and a
+   window whose chrome is nothing like as expensive as a phone's. */
+.zoom-btn.fullscreen {
+  display: none;
+}
+
+.zoom-btn.fullscreen svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (pointer: coarse) {
+  .zoom-btn.fullscreen {
+    display: flex;
+  }
 }
 
 .zoom-btn:hover:not(:disabled) {
@@ -700,6 +821,72 @@ function isSurroundedNow(space: Space): boolean {
   }
 }
 
+/*
+ * The answer to "where is it?" — struck in the vermillion this design uses for
+ * whatever it is asking you to look at, and quite unlike the seat-coloured
+ * marks underneath it or the green of a space you may play on. It rings the
+ * hex rather than washing over it, so the tile it is pointing at stays
+ * readable, and it goes after a few seconds: it says which tile, it is not a
+ * state the board is in.
+ */
+.found {
+  pointer-events: none;
+}
+
+.found-ring {
+  fill: none;
+  stroke: var(--vermillion);
+  stroke-width: 3.6;
+  filter: drop-shadow(0 0 3px var(--vermillion));
+  animation: found-beat 0.9s ease-in-out 3, mark-fade 3.6s ease-out forwards;
+}
+
+/* One ripple off the hex's own edge, the way a target hex swells — enough to
+   catch the eye arriving at a board that has just jumped. */
+.found-ripple {
+  fill: none;
+  stroke: var(--vermillion);
+  stroke-width: 2.4;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: found-ripple 1.1s ease-out 2;
+}
+
+@keyframes found-beat {
+  0%,
+  100% {
+    stroke-opacity: 0.55;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+@keyframes found-ripple {
+  0% {
+    stroke-opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    stroke-opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+/* Its own block rather than the one further up: these have to be read after the
+   rules they answer, or the animations above simply win on source order. */
+@media (prefers-reduced-motion: reduce) {
+  /* The ring still says which tile, and still leaves when it has said it. */
+  .found-ring {
+    stroke-opacity: 1;
+    animation: mark-fade 3.6s ease-out forwards;
+  }
+
+  .found-ripple {
+    display: none;
+  }
+}
+
 .tile-fresh {
   animation: drop-in 0.28s ease-out;
 }
@@ -712,6 +899,39 @@ function isSurroundedNow(space: Space): boolean {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* --- touch and narrow screens --------------------------------------------- */
+
+/* Every gesture on a phone lands on the board, so the board's own controls have
+   to be big enough to hit without pinching it by accident on the way. */
+@media (pointer: coarse) {
+  .zoom-btn {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.25rem;
+  }
+
+  .zoom-btn.reset {
+    font-size: 0.78rem;
+  }
+}
+
+/* The frame gives its padding back to the board, which is the whole screen here. */
+@media (max-width: 900px) {
+  .board-wrap {
+    padding: 0.3rem;
+  }
+
+  .zoom-controls {
+    right: 0.45rem;
+    bottom: 0.45rem;
+  }
+
+  .zoom-badge {
+    left: 0.45rem;
+    bottom: 0.45rem;
   }
 }
 </style>

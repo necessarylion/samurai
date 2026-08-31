@@ -93,7 +93,8 @@ function leave() {
   right: 0;
   top: calc(100% + 0.4rem);
   z-index: 21;
-  width: 15rem;
+  /* Never wider than the screen it is anchored to the right of. */
+  width: min(15rem, calc(100vw - 1.5rem));
   padding: 0.6rem;
   box-shadow: var(--shadow-lg);
 }

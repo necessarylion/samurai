@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { PLAYER_COLOURS } from '@shared/colours'
 import type { LogEntry, PlayerColour } from '@shared/types'
+import { seatOf, wordEntry } from '@/game/log'
 import { t } from '@/i18n'
 
 /**
@@ -47,15 +48,8 @@ function isRearrange(text: string) {
   return text.includes('the switch tile') || text.includes('the move tile')
 }
 
-function nameOf(id: number | null) {
-  if (id === null) return null
-  return props.players.find((p) => p.id === id) ?? null
-}
-
-/** Engines that cannot see names write a seat as `#id`; it reads as the name here. */
-function wording(text: string) {
-  return text.replace(/#(\d+)/g, (whole, id: string) => nameOf(Number(id))?.name ?? whole)
-}
+const nameOf = (id: number | null) => seatOf(props.players, id)
+const wording = (text: string) => wordEntry(text, props.players)
 
 watch(
   () => entries.value.length,

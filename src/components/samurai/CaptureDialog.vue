@@ -156,4 +156,16 @@ h2 {
     animation: none;
   }
 }
+
+/* See RulesDialog: fixed, so the notch is this dialog's own problem. */
+@media (max-width: 46rem) {
+  .backdrop {
+    padding: max(0.6rem, env(safe-area-inset-top)) max(0.6rem, env(safe-area-inset-right))
+      max(0.6rem, env(safe-area-inset-bottom)) max(0.6rem, env(safe-area-inset-left));
+  }
+
+  .dialog {
+    padding: 1.2rem 1rem 1.3rem;
+  }
+}
 </style>

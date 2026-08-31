@@ -2,7 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- `viewport-fit=cover` lets the page paint under a notch; the safe-area insets
+         that keep content out from under it are applied on `.app` in App.vue. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <!-- Safari on an iPhone has no fullscreen API. Added to the home screen,
+         these give it the same thing: the game runs with no browser chrome at
+         all. They do nothing in an ordinary tab. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" content="#f2e9db" />
     <title>Board Games</title>
     <meta
       name="description"

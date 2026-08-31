@@ -131,8 +131,15 @@ onMounted(() => game.connect())
 </template>
 
 <style scoped>
+/* The insets are taken once, here, rather than in every screen: the page is
+   drawn under the notch and the home indicator (`viewport-fit=cover` in
+   index.html), and this is what keeps the topbars, hand bars and lobbies clear
+   of them. They resolve to 0 everywhere else, so desktop is unchanged. Dialogs
+   are `position: fixed` and so sit outside this box — they carry their own. */
 .app {
   height: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
   display: flex;
   flex-direction: column;
 }
@@ -184,7 +191,7 @@ onMounted(() => game.connect())
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 1.5rem;
+  bottom: calc(1.5rem + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   margin: 0;
   padding: 0.6rem 1.1rem;
