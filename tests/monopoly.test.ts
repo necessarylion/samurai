@@ -114,6 +114,41 @@ describe('the board', () => {
   })
 })
 
+describe('the play log', () => {
+  it('writes every figure in the same unit the board uses', () => {
+    const game = started()
+    give(game, 1, 3)
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+    const text = game.state.log.map((e) => e.text).join(' | ')
+    // The log is the engine's, and the board is the client's, but a player reads
+    // them side by side — so a bare ladder number in either is a bug.
+    expect(text).toContain('$1,500B')
+    expect(text).toMatch(/owes \$\d+B in rent/)
+    expect(text).not.toMatch(/\bfor \d+\.|\bcollects \d+\.|\bowes \d+ /)
+  })
+
+  it('calls the first corner the IPO, which is what the board calls it', () => {
+    const game = started()
+    give(game, 0, 1)
+    game.state.players[0].pos = 36
+    rollOf(game, 2, 3)
+    game.roll(0)
+    const text = game.state.log.map((e) => e.text).join(' | ')
+    expect(text).toContain('passes the IPO')
+    expect(text).not.toContain('passes Go')
+  })
+
+  it('prices every card in the same unit too', () => {
+    for (const card of [...CHANCE, ...CHEST]) {
+      // A card naming a figure has to name it the way everything else does.
+      const bare = card.text.match(/(?<![$\d,])\b\d+\b(?!B)/)
+      expect(bare, card.text).toBeNull()
+    }
+  })
+})
+
 describe('the deal', () => {
   it('sets everyone on Go with the same purse, a seat drawn to open', () => {
     const game = new MonopolyGame(4, 11, false)
@@ -599,6 +634,53 @@ describe('debt and bankruptcy', () => {
     // Nothing to sell and nothing to mortgage: there is no decision to wait for.
     expect(game.state.players[0].bankrupt).toBe(true)
     expect(game.state.pending).toHaveLength(0)
+  })
+
+  it('moves the turn on when the player whose turn it is goes bankrupt', () => {
+    // The table deadlocked here: a seat that went bankrupt on its own turn was
+    // left as `current`, and it could not act (the guard rejects a bankrupt
+    // player) while nobody else could either (it was not their turn).
+    const game = started(3)
+    give(game, 1, 1, 3)
+    game.state.houses[3] = HOTEL
+    game.state.players[0].cash = 5
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+
+    expect(game.state.players[0].bankrupt).toBe(true)
+    expect(game.state.phase).toBe('play')
+    // The turn must have moved to a seat that can actually take it.
+    expect(game.state.current).not.toBe(0)
+    expect(game.state.players[game.state.current].bankrupt).toBe(false)
+    expect(game.state.pending).toHaveLength(0)
+    expect(game.state.rolled).toBe(false)
+    // And that seat can get on with it.
+    expect(game.roll(game.state.current).ok).toBe(true)
+  })
+
+  it('skips a seat that went bankrupt to a creditor on its own turn', () => {
+    const game = started(3)
+    give(game, 0, 1)
+    game.state.players[0].cash = 0
+    game.state.rolled = true
+    game.state.pending = [{ step: 'debt', player: 0, amount: 5000, creditor: 1 }]
+    expect(game.declareBankrupt(0).ok).toBe(true)
+    expect(game.state.current).not.toBe(0)
+    expect(game.state.players[game.state.current].bankrupt).toBe(false)
+  })
+
+  it('never leaves the shot clock pointing at a seat that cannot play', () => {
+    const game = started(3)
+    give(game, 1, 1, 3)
+    game.state.houses[3] = HOTEL
+    game.state.players[0].cash = 5
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+    // The clock settles whatever the table waits on; with the turn moved on it
+    // has a live seat to act for, rather than retrying a rejected action forever.
+    expect(game.timeOut().ok).toBe(true)
   })
 
   it('ends when one solvent player is left', () => {

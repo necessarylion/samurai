@@ -1,3 +1,4 @@
+import { money } from './money'
 import { chooseFirst, type Opening } from './opening'
 import { Rng } from './rng'
 import type { LogEntry } from './types'
@@ -218,33 +219,33 @@ export const CHANCE: readonly MonopolyCard[] = [
   { text: 'A brownout on your rack. Go to the next utility.', effect: { do: 'nearest', target: 'utility' } },
   { text: 'A regulator opens a case against you. Go to Antitrust.', effect: { do: 'jail' } },
   { text: 'Your lawyers file ahead of time. Keep this card to end an antitrust review.', effect: { do: 'jailCard' } },
-  { text: 'A patent settles in your favour. Collect 150.', effect: { do: 'cash', amount: 150 } },
-  { text: 'A short squeeze goes your way. Collect 100.', effect: { do: 'cash', amount: 100 } },
-  { text: 'An outage refunds your customers. Pay 50.', effect: { do: 'cash', amount: -50 } },
-  { text: 'A domain renewal you forgot. Pay 25.', effect: { do: 'cash', amount: -25 } },
-  { text: 'You buy the whole sector lunch at the summit. Pay each player 50.', effect: { do: 'each', amount: -50 } },
-  { text: 'Everyone settles their licence arrears. Collect 25 from each player.', effect: { do: 'each', amount: 25 } },
-  { text: 'A security audit of your estate. Pay 25 per office and 100 per HQ.', effect: { do: 'repairs', perHouse: 25, perHotel: 100 } },
+  { text: 'A patent settles in your favour. Collect $150B.', effect: { do: 'cash', amount: 150 } },
+  { text: 'A short squeeze goes your way. Collect $100B.', effect: { do: 'cash', amount: 100 } },
+  { text: 'An outage refunds your customers. Pay $50B.', effect: { do: 'cash', amount: -50 } },
+  { text: 'A domain renewal you forgot. Pay $25B.', effect: { do: 'cash', amount: -25 } },
+  { text: 'You buy the whole sector lunch at the summit. Pay each player $50B.', effect: { do: 'each', amount: -50 } },
+  { text: 'Everyone settles their licence arrears. Collect $25B from each player.', effect: { do: 'each', amount: 25 } },
+  { text: 'A security audit of your estate. Pay $25B per office and $100B per HQ.', effect: { do: 'repairs', perHouse: 25, perHotel: 100 } },
 ]
 
 /** The Venture Fund deck — the one that mostly pays. Original texts. */
 export const CHEST: readonly MonopolyCard[] = [
   { text: 'Your round closes early. Advance to the IPO.', effect: { do: 'move', to: 0 } },
-  { text: 'An acquihire pays out. Collect 200.', effect: { do: 'cash', amount: 200 } },
-  { text: 'A cloud credit rebate. Collect 100.', effect: { do: 'cash', amount: 100 } },
-  { text: 'A contract you had written off renews. Collect 75.', effect: { do: 'cash', amount: 75 } },
-  { text: 'A bug bounty you posted goes unclaimed. Collect 50.', effect: { do: 'cash', amount: 50 } },
-  { text: 'An unplanned weekend of on-call. Pay 100.', effect: { do: 'cash', amount: -100 } },
-  { text: 'Your seat licences renew. Pay 75.', effect: { do: 'cash', amount: -75 } },
-  { text: 'Compliance training for the quarter. Pay 50.', effect: { do: 'cash', amount: -50 } },
+  { text: 'An acquihire pays out. Collect $200B.', effect: { do: 'cash', amount: 200 } },
+  { text: 'A cloud credit rebate. Collect $100B.', effect: { do: 'cash', amount: 100 } },
+  { text: 'A contract you had written off renews. Collect $75B.', effect: { do: 'cash', amount: 75 } },
+  { text: 'A bug bounty you posted goes unclaimed. Collect $50B.', effect: { do: 'cash', amount: 50 } },
+  { text: 'An unplanned weekend of on-call. Pay $100B.', effect: { do: 'cash', amount: -100 } },
+  { text: 'Your seat licences renew. Pay $75B.', effect: { do: 'cash', amount: -75 } },
+  { text: 'Compliance training for the quarter. Pay $50B.', effect: { do: 'cash', amount: -50 } },
   { text: 'A leaked memo reaches the regulator. Go to Antitrust.', effect: { do: 'jail' } },
   { text: 'A filing clerk loses the complaint. Keep this card to end an antitrust review.', effect: { do: 'jailCard' } },
-  { text: 'It is your founding day. Collect 20 from each player.', effect: { do: 'each', amount: 20 } },
-  { text: 'You host the offsite. Pay each player 25.', effect: { do: 'each', amount: -25 } },
-  { text: 'An inspection of your estate. Pay 40 per office and 115 per HQ.', effect: { do: 'repairs', perHouse: 40, perHotel: 115 } },
-  { text: 'A prize for the best developer experience. Collect 60.', effect: { do: 'cash', amount: 60 } },
-  { text: 'An escrow release. Collect 45.', effect: { do: 'cash', amount: 45 } },
-  { text: 'A rush order of spare drives. Pay 30.', effect: { do: 'cash', amount: -30 } },
+  { text: 'It is your founding day. Collect $20B from each player.', effect: { do: 'each', amount: 20 } },
+  { text: 'You host the offsite. Pay each player $25B.', effect: { do: 'each', amount: -25 } },
+  { text: 'An inspection of your estate. Pay $40B per office and $115B per HQ.', effect: { do: 'repairs', perHouse: 40, perHotel: 115 } },
+  { text: 'A prize for the best developer experience. Collect $60B.', effect: { do: 'cash', amount: 60 } },
+  { text: 'An escrow release. Collect $45B.', effect: { do: 'cash', amount: 45 } },
+  { text: 'A rush order of spare drives. Pay $30B.', effect: { do: 'cash', amount: -30 } },
 ]
 
 // --- state -------------------------------------------------------------------
@@ -553,7 +554,7 @@ export class MonopolyGame {
       phase: 'play',
       paused: false,
       turnNumber: 1,
-      log: [{ turn: 0, player: null, text: `${playerCount} players set out with ${START_CASH} each.` }],
+      log: [{ turn: 0, player: null, text: `${playerCount} players set out with ${money(START_CASH)} each.` }],
       result: null,
       rngPosition: rng.position,
     }
@@ -604,7 +605,7 @@ export class MonopolyGame {
     player.cash -= price
     s.owners[p.space] = playerId
     s.pending.shift()
-    this.log(playerId, `buys ${SPACES[p.space].name} for ${price}.`)
+    this.log(playerId, `buys ${SPACES[p.space].name} for ${money(price)}.`)
     this.advance()
     return ok
   }
@@ -650,7 +651,7 @@ export class MonopolyGame {
     p.highBidder = playerId
     // A raise reopens the window to everyone who had dropped out on a lower bid.
     p.passed = [playerId]
-    this.log(playerId, `bids ${amount} for ${SPACES[p.space].name}.`)
+    this.log(playerId, `bids ${money(amount)} for ${SPACES[p.space].name}.`)
     this.advance()
     return ok
   }
@@ -719,7 +720,7 @@ export class MonopolyGame {
     s.players[playerId].cash -= street.houseCost
     s.houses[space]++
     const what = s.houses[space] === HOTEL ? 'an HQ' : `office ${s.houses[space]}`
-    this.log(playerId, `builds ${what} on ${street.name} for ${street.houseCost}.`)
+    this.log(playerId, `builds ${what} on ${street.name} for ${money(street.houseCost)}.`)
     return ok
   }
 
@@ -746,7 +747,7 @@ export class MonopolyGame {
     if (!mortgageable(s, playerId).includes(space)) return fail('You cannot mortgage that.')
     s.mortgaged[space] = true
     s.players[playerId].cash += mortgageValue(space)
-    this.log(playerId, `mortgages ${SPACES[space].name} for ${mortgageValue(space)}.`)
+    this.log(playerId, `mortgages ${SPACES[space].name} for ${money(mortgageValue(space))}.`)
     this.advance()
     return ok
   }
@@ -783,7 +784,7 @@ export class MonopolyGame {
       if (player.cash < JAIL_FINE) return fail('You cannot afford the fine.')
       player.cash -= JAIL_FINE
       s.pending.shift()
-      this.release(player, `pays the ${JAIL_FINE} fine and settles the review`)
+      this.release(player, `pays the ${money(JAIL_FINE)} fine and settles the review`)
       return ok
     }
 
@@ -918,7 +919,7 @@ export class MonopolyGame {
     return [a, b]
   }
 
-  /** Walk a player forward, collecting the Go salary on the way past. */
+  /** Walk a player forward, collecting the IPO salary on the way past. */
   private move(player: MonopolyPlayer, steps: number, dice: [number, number]): void {
     const s = this.state
     const from = player.pos
@@ -927,7 +928,7 @@ export class MonopolyGame {
     player.pos = to
     if (passedGo) {
       player.cash += GO_SALARY
-      this.log(player.id, `passes Go and collects ${GO_SALARY}.`)
+      this.log(player.id, `passes the IPO and collects ${money(GO_SALARY)}.`)
     }
     s.lastRoll = { player: player.id, dice, from, to, passedGo, doubles: dice[0] === dice[1] }
     this.log(player.id, `throws ${dice[0]} and ${dice[1]} and moves to ${SPACES[to].name}.`)
@@ -940,7 +941,7 @@ export class MonopolyGame {
     player.pos = to
     if (collectGo && to <= from) {
       player.cash += GO_SALARY
-      this.log(player.id, `passes Go and collects ${GO_SALARY}.`)
+      this.log(player.id, `passes the IPO and collects ${money(GO_SALARY)}.`)
     }
     const roll = this.state.lastRoll
     this.land(player, to, roll ? roll.dice[0] + roll.dice[1] : 0)
@@ -951,7 +952,7 @@ export class MonopolyGame {
     const s = this.state
     const def = SPACES[space]
     if (def.kind === 'tax') {
-      this.log(player.id, `pays ${def.amount} in ${def.name.toLowerCase()}.`)
+      this.log(player.id, `pays ${money(def.amount)} in ${def.name.toLowerCase()}.`)
       this.charge(player, def.amount, null)
       return
     }
@@ -979,7 +980,7 @@ export class MonopolyGame {
       return
     }
     const rent = rentFor(s, space, diceTotal)
-    this.log(player.id, `owes ${rent} in rent on ${def.name}.`)
+    this.log(player.id, `owes ${money(rent)} in rent on ${def.name}.`)
     this.charge(player, rent, owner)
   }
 
@@ -1041,7 +1042,7 @@ export class MonopolyGame {
         this.teleport(player, effect.to, true)
         return
       case 'back':
-        // Backwards never passes Go, even when the board wraps underneath.
+        // Backwards never passes the IPO, even when the board wraps underneath.
         this.teleport(player, (player.pos - effect.steps + BOARD_SIZE) % BOARD_SIZE, false)
         return
       case 'nearest': {
@@ -1076,7 +1077,7 @@ export class MonopolyGame {
           if (s.houses[i] === HOTEL) due += effect.perHotel
           else due += s.houses[i] * effect.perHouse
         }
-        if (due > 0) this.log(player.id, `owes ${due} for repairs.`)
+        if (due > 0) this.log(player.id, `owes ${money(due)} for repairs.`)
         this.charge(player, due, null)
         return
       }
@@ -1097,7 +1098,7 @@ export class MonopolyGame {
     }
     s.players[p.highBidder].cash -= p.high
     s.owners[p.space] = p.highBidder
-    this.log(p.highBidder, `wins ${SPACES[p.space].name} at auction for ${p.high}.`)
+    this.log(p.highBidder, `wins ${SPACES[p.space].name} at auction for ${money(p.high)}.`)
   }
 
   /** Why a trade cannot go through, or null when it can. */
@@ -1204,6 +1205,16 @@ export class MonopolyGame {
       const p = s.pending[0]
 
       if (!p) {
+        // A seat that went bankrupt on its own turn has to be moved off it here.
+        // It cannot end the turn itself — `guard()` rejects a bankrupt player —
+        // and nobody else can either, because it is not their turn, so leaving
+        // `current` pointing at it deadlocks the whole table. `checkEnd()` at
+        // the top of this loop is what stops the search running away when there
+        // is nobody solvent left to hand the turn to.
+        if (s.players[s.current].bankrupt) {
+          this.nextTurn()
+          continue
+        }
         // A seat that has thrown and settled everything still ends its own turn,
         // so it can build and trade first; a jailed one is asked at the top.
         if (s.players[s.current].jailed && !s.rolled) {

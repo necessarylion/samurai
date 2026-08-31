@@ -2,8 +2,10 @@
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import GameIcon from '../common/GameIcon.vue'
 import LogPanel from '../common/LogPanel.vue'
+import SeatToken from '../common/SeatToken.vue'
 import TableMenu from '../common/TableMenu.vue'
 import CompanyLogo from './CompanyLogo.vue'
+import SpaceDetail from './SpaceDetail.vue'
 import MonopolyTradeDialog from './MonopolyTradeDialog.vue'
 import { PLAYER_COLOURS } from '@shared/colours'
 import {
@@ -22,7 +24,7 @@ import {
   type Group,
 } from '@shared/monopoly'
 import { companyLogo } from '@/game/companies'
-import { money } from '@/game/money'
+import { money } from '@shared/money'
 import { useCountdown } from '@/composables/useCountdown'
 import { t } from '@/i18n'
 import { useGameStore } from '@/stores/game'
@@ -244,10 +246,10 @@ const showTrade = ref(false)
  * state — the three fields it reads are public, so the table can work it out
  * rather than keeping a second copy of the rent rules beside the real one.
  */
-const myHoldings = computed(() => {
+function holdingsOf(seat: number) {
   const s = state.value
-  if (!s || game.you === null) return []
-  const you = game.you
+  if (!s) return []
+  const you = seat
   return s.owners
     .map((owner, n) => ({ owner, n }))
     .filter((h) => h.owner === you)
@@ -282,7 +284,21 @@ const myHoldings = computed(() => {
         liftCost: unmortgageCost(n),
       }
     })
-})
+}
+
+const myHoldings = computed(() => (game.you === null ? [] : holdingsOf(game.you)))
+
+/**
+ * What everyone else holds. Ownership, buildings and mortgages are all public
+ * in Monopoly — the board already shows them — so gathering them per seat here
+ * reveals nothing new; it only saves reading them off forty spaces. Bankrupt
+ * seats are dropped: they own nothing and never will again.
+ */
+const opponents = computed(() =>
+  players.value
+    .filter((p) => p.id !== game.you && !p.bankrupt)
+    .map((p) => ({ ...p, holdings: holdingsOf(p.id) })),
+)
 
 const winner = computed(() => {
   const w = state.value?.result?.winner
@@ -290,6 +306,46 @@ const winner = computed(() => {
 })
 
 const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
+
+// --- the hover card ---------------------------------------------------------
+
+/**
+ * Which space is being hovered, and where to put its card. Fixed positioning
+ * off the hovered element's own rectangle, so one card serves the board and
+ * both property lists — they sit in different scroll containers, and anything
+ * measured relative to a parent would be wrong in at least one of them.
+ */
+const detail = ref<{ n: number; style: Record<string, string> } | null>(null)
+
+const CARD_W = 240
+const CARD_GAP = 10
+
+function showDetail(event: Event, n: number) {
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  // Clamped to the viewport, because a card hung off a corner space would
+  // otherwise open half off the screen.
+  const x = Math.min(Math.max(r.left + r.width / 2, CARD_W / 2 + 8), window.innerWidth - CARD_W / 2 - 8)
+  // Above by default; below when there is not room, which is the top row.
+  const above = r.top > 320
+  detail.value = {
+    n,
+    style: above
+      ? { left: `${x}px`, top: `${r.top - CARD_GAP}px`, transform: 'translate(-50%, -100%)' }
+      : { left: `${x}px`, top: `${r.bottom + CARD_GAP}px`, transform: 'translate(-50%, 0)' },
+  }
+}
+
+const hideDetail = () => (detail.value = null)
+
+/** The sector colour for the hovered space, so the card is banded like the board. */
+const detailBand = computed(() => {
+  const n = detail.value?.n
+  if (n === undefined) return null
+  const space = SPACES[n]
+  return space.kind === 'street' ? GROUP_COLOUR[space.group] : null
+})
 </script>
 
 <template>
@@ -324,7 +380,7 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
             :class="{ current: p.id === state?.current && !isOver, offline: !p.connected, out: p.bankrupt }"
             :style="{ '--seat': PLAYER_COLOURS[p.colour].ink, '--seat-fill': PLAYER_COLOURS[p.colour].fill }"
           >
-            <span class="token" :style="{ background: PLAYER_COLOURS[p.colour].fill }"></span>
+            <SeatToken :colour="p.colour" :size="22" :current="p.id === state?.current && !isOver" :label="p.name" />
             <div class="player-body">
               <div class="player-head">
                 <span class="player-name">{{ p.name }}</span>
@@ -370,7 +426,12 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
               '--owner': c.ownerColour ?? 'transparent',
               '--tint': c.logo?.tint ?? 'transparent',
             }"
-            :title="spaceTitle(c.n)"
+            tabindex="0"
+            :aria-label="spaceTitle(c.n)"
+            @mouseenter="showDetail($event, c.n)"
+            @focus="showDetail($event, c.n)"
+            @mouseleave="hideDetail()"
+            @blur="hideDetail()"
           >
             <span v-if="c.logo" class="tint"></span>
             <span v-if="c.band" class="band" :style="{ background: c.band }"></span>
@@ -390,14 +451,14 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
             </span>
 
             <span v-if="c.tokens.length" class="tokens">
-              <span
+              <SeatToken
                 v-for="p in c.tokens"
                 :key="p.id"
-                class="tok"
-                :class="{ mine: p.id === game.you }"
-                :style="{ background: PLAYER_COLOURS[p.colour].fill, borderColor: PLAYER_COLOURS[p.colour].ink }"
-                :title="p.name"
-              ></span>
+                :colour="p.colour"
+                :size="15"
+                :current="p.id === state?.current && !isOver"
+                :label="p.name"
+              />
             </span>
           </div>
 
@@ -558,6 +619,8 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
             class="deed"
             :class="{ mortgaged: h.mortgaged, complete: h.complete && !h.mortgaged }"
             :style="{ '--band': h.band ?? 'var(--ink-faint)' }"
+            @mouseenter="showDetail($event, h.n)"
+            @mouseleave="hideDetail()"
           >
             <span class="deed-band"></span>
 
@@ -630,8 +693,63 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
             </div>
           </li>
         </ul>
+
+        <!-- Everyone else's, read only. All of it is public — the board shows
+             the same thing across forty spaces — so this only saves the reading. -->
+        <template v-if="opponents.length">
+          <h3 class="others-head">{{ t('monopoly.manage.others') }}</h3>
+          <section v-for="o in opponents" :key="o.id" class="rival">
+            <div class="rival-head">
+              <SeatToken :colour="o.colour" :size="18" :label="o.name" />
+              <span class="rival-name">{{ o.name }}</span>
+              <span class="rival-cash tiny">{{ money(o.cash) }}</span>
+            </div>
+            <p v-if="!o.holdings.length" class="tiny muted rival-none">
+              {{ t('monopoly.manage.noneYet') }}
+            </p>
+            <ul v-else class="rival-list">
+              <li
+                v-for="h in o.holdings"
+                :key="h.n"
+                class="rival-deed"
+                :class="{ mortgaged: h.mortgaged, complete: h.complete && !h.mortgaged }"
+                :style="{ '--band': h.band ?? 'var(--ink-faint)' }"
+                tabindex="0"
+                :aria-label="spaceTitle(h.n)"
+                @mouseenter="showDetail($event, h.n)"
+                @focus="showDetail($event, h.n)"
+                @mouseleave="hideDetail()"
+                @blur="hideDetail()"
+              >
+                <span class="rival-band"></span>
+                <CompanyLogo v-if="h.logo" class="rival-logo" :name="h.space.name" />
+                <span v-else class="rival-logo glyph">
+                  <GameIcon :name="h.space.kind === 'station' ? 'monopoly.station' : 'monopoly.utility'" :size="13" />
+                </span>
+                <span class="rival-deed-name">{{ h.space.name }}</span>
+                <span v-if="h.houses" class="rival-built">
+                  <GameIcon v-if="h.houses === HOTEL" name="monopoly.hotel" :size="11" />
+                  <GameIcon v-for="x in h.houses === HOTEL ? 0 : h.houses" v-else :key="x" name="monopoly.house" :size="10" />
+                </span>
+                <span class="rival-rent tiny">
+                  <template v-if="h.mortgaged">—</template>
+                  <template v-else-if="h.multiplier">{{ h.multiplier }}×</template>
+                  <template v-else>{{ money(h.rent ?? 0) }}</template>
+                </span>
+              </li>
+            </ul>
+          </section>
+        </template>
       </aside>
     </main>
+
+    <!-- Rendered at the end of the app rather than inside the board, so it is
+         never clipped by a scrolling column. -->
+    <Teleport to="body">
+      <div v-if="detail" class="detail-layer" :style="detail.style">
+        <SpaceDetail :n="detail.n" :band="detailBand" />
+      </div>
+    </Teleport>
 
     <MonopolyTradeDialog v-if="showTrade" @close="showTrade = false" />
   </div>
@@ -738,13 +856,7 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
   opacity: 0.55;
 }
 
-.token {
-  flex: none;
-  width: 1.1rem;
-  height: 1.1rem;
-  border-radius: 50%;
-  border: 2px solid var(--seat);
-}
+
 
 .player-body {
   min-width: 0;
@@ -984,19 +1096,16 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
 }
 
-.tok {
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 50%;
-  border: 1px solid;
-}
-
-.tok.mine {
-  outline: 1px solid var(--ink);
-  outline-offset: 1px;
+/* The pieces sit above the space's own content and may spill a little past the
+   cell — a token that had to fit inside the padding would be back to a dot. */
+.tokens {
+  position: absolute;
+  inset: auto 0 4% 0;
+  z-index: 2;
+  pointer-events: none;
 }
 
 /* Opacity only: animating a filter re-rasterises the whole board every frame. */
@@ -1334,6 +1443,19 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
   margin-top: 0.1rem;
 }
 
+.detail-layer {
+  position: fixed;
+  z-index: 70;
+  pointer-events: none;
+}
+
+/* Keyboard users get the card too, and need to see what has focus. */
+.space:focus-visible,
+.rival-deed:focus-visible {
+  outline: 2px solid var(--vermillion);
+  outline-offset: -2px;
+}
+
 .tiny-btn {
   display: inline-flex;
   align-items: baseline;
@@ -1356,6 +1478,108 @@ const logMark = (turn: number) => t('monopoly.logMark', { n: turn })
 
 .cost.out {
   color: var(--vermillion-dark);
+}
+
+/* --- everyone else's property ------------------------------------------- */
+
+.others-head {
+  margin: 0.6rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--gold-line);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+}
+
+.rival-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.rival-name {
+  font-weight: 600;
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-cash {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.rival-none {
+  margin: 0 0 0.3rem;
+}
+
+.rival-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Denser than your own card: no decision is taken here, so it carries only
+   what you need to know before landing on it — whose it is, and what it charges. */
+.rival-deed {
+  display: grid;
+  grid-template-columns: 3px 1rem 1fr auto auto;
+  align-items: center;
+  gap: 0 0.35rem;
+  padding: 0.15rem 0.35rem 0.15rem 0;
+  border-radius: 5px;
+  background: var(--paper);
+  border: 1px solid transparent;
+  font-size: 0.74rem;
+  overflow: hidden;
+}
+
+.rival-deed.complete {
+  border-color: var(--band);
+}
+
+.rival-deed.mortgaged {
+  opacity: 0.55;
+}
+
+.rival-band {
+  align-self: stretch;
+  background: var(--band);
+}
+
+.rival-logo {
+  width: 1rem;
+  height: 1rem;
+}
+
+.rival-logo.glyph {
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+}
+
+.rival-deed-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-built {
+  display: flex;
+  gap: 1px;
+  color: var(--vermillion);
+}
+
+.rival-rent {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
 }
 
 @media (max-width: 60rem) {

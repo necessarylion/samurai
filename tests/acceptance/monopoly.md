@@ -304,7 +304,46 @@ topbar, so it ran off the bottom of the page.
 - The board stays square and never overflows its column horizontally.
 - Company names stay legible as the board shrinks; they get smaller, not clipped.
 
-## MON-22 — Reconnection keeps the seat
+## MON-22 — Hovering a space explains it
+
+**Steps**
+1. Hover a company on the board, then a data centre, a utility, a tax corner and
+   the IPO corner.
+2. Hover a row in your own **Your property** list, and one in an opponent's list.
+3. Tab to a board space with the keyboard.
+
+**Expected**
+- A card appears showing the space's logo, name, sector, price and owner.
+- For a company it shows the **whole rent ladder** — bare, whole sector, 1–4
+  offices, HQ — with the rung it is currently on highlighted.
+- A data centre shows rent for holding 1, 2, 3 or 4; a utility shows `4× the
+  throw` and `10× the throw`.
+- The corners and card spaces explain what they do instead; a tax says its
+  amount, which the board space itself does not show.
+- The sector line **names** the colour band (e.g. `Consumer apps` for cyan).
+- The same card appears from the property lists, not only from the board.
+- It appears on keyboard focus too, and never opens off the edge of the screen —
+  check the corner spaces and the top row especially.
+
+## MON-23 — Going bankrupt does not stop the game
+
+A regression guard: a seat that went bankrupt on its own turn used to stay the
+current player, and because a bankrupt seat cannot act and no other seat may act
+out of turn, the whole table locked up.
+
+**Steps**
+1. Play until one player goes bankrupt (or force it: let a player with little
+   cash land on a heavily built property owned by someone else).
+2. Watch the tab of the player who went bankrupt, and one other.
+
+**Expected**
+- The bankrupt player's seat is marked **BANKRUPT** with $0.
+- Their tab does **not** say "Your turn" and shows no throw button.
+- Play moves on to the next solvent seat, in every tab.
+- That seat can throw, and the game continues normally.
+- If the shot clock is on, it does not sit stuck on the bankrupt seat.
+
+## MON-24 — Reconnection keeps the seat
 
 **Steps**
 1. Reload P2's tab mid-game.

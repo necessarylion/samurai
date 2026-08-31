@@ -1,5 +1,10 @@
 /**
- * How Monopoly's money is written on screen.
+ * How Monopoly's money is written — on screen and in the play log alike.
+ *
+ * This sits in `shared/` rather than beside the client's other display helpers
+ * because the engine writes the log and the card texts, and a board reading
+ * "$180B" beside a log reading "buys Netflix for 180" is two units for one
+ * currency.
  *
  * The engine's figures are the classic property ladder — 60 through 400 for the
  * board, 1500 to start — and they stay exactly that, because every rent table,
@@ -12,16 +17,16 @@
  * right order: Snap at $60B and Apple at $400B is roughly how the two compare,
  * where "60" and "400" said nothing at all. It is deliberately not exact — the
  * ladder is Monopoly's, and the game matters more than the accountancy.
+ *
+ * Everything is in billions, including the large ones: a table showing $810B
+ * beside $1.2T asks the reader to convert between two units to see which is
+ * bigger, which is exactly the comparison a player makes most often. One unit
+ * throughout, with a separator for the long figures, keeps them lined up.
  */
 
-/** A figure as it appears on screen: `$60B`, `$1.5T`, `$0`. */
+/** A figure as it appears on screen: `$60B`, `$1,500B`, `$0`. */
 export function money(amount: number): string {
   if (!Number.isFinite(amount) || amount === 0) return '$0'
   const sign = amount < 0 ? '-' : ''
-  const n = Math.abs(amount)
-  if (n < 1000) return `${sign}$${n}B`
-  const trillions = n / 1000
-  // A round trillion loses the decimal; $1.5T keeps it. Anything past one place
-  // is noise at the size these are drawn.
-  return `${sign}$${trillions % 1 === 0 ? trillions : trillions.toFixed(1)}T`
+  return `${sign}$${Math.abs(amount).toLocaleString('en-GB')}B`
 }
