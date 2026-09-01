@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-  # Pull requests are verified but never published.
+  # Pull requests are verified; pushes to main are built and deployed.
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -14,26 +14,66 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  verify:
-    name: Typecheck and test
+  typecheck:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      # Includes the end-to-end suite, which starts the real server and plays a
-      # full game between two WebSocket clients.
-      - run: bun run test
+
+  test:
+    name: Test (shard ${{ matrix.shard }}/4)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # One shard holds the end-to-end suite, which starts the real server on
+      # port 8899 and plays a full game between two WebSocket clients. Shards
+      # get a runner each, so that fixed port is never contended.
+      - run: bunx vitest run --shard=${{ matrix.shard }}/4
+
+  e2e:
+    name: Browser tests (shard ${{ matrix.shard }}/4)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # Chromium covers every viewport project; WebKit is only for mobile-safari.
+      - run: bunx playwright install --with-deps chromium webkit
+      # Playwright starts the app itself (`bun run dev`: Vite plus the game server).
+      - run: bunx playwright test --shard=${{ matrix.shard }}/4
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: playwright-report/
+          retention-days: 7
 
   publish:
     name: Build and push
-    # Never publish an image that did not pass the suite.
-    needs: verify
+    # The suite gates the pull request; by the time a commit reaches main it has
+    # already run, so a push only builds and deploys.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
