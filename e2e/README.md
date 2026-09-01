@@ -65,7 +65,7 @@ is honest about what it covered rather than quietly passing.
 
 CI runs the same suite split four ways (`--shard`), one runner each, in
 Microsoft's `mcr.microsoft.com/playwright` image so no browser is downloaded —
-see `.github/workflows/docker-publish.yml`. That image carries the browsers for
+see `.github/workflows/test.yml`. That image carries the browsers for
 one Playwright version, which is why `@playwright/test` is pinned rather than
 ranged: bump the two together.
 

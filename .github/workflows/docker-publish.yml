@@ -1,12 +1,12 @@
 name: Publish Docker image
 
+# Builds the image and tells Coolify to pull it. The suite lives in
+# `test.yml` and gates the pull request, so a commit that reaches main has
+# already passed it.
 on:
   push:
     branches: [main]
     tags: ['v*']
-  # Pull requests are verified; pushes to main are built and deployed.
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 env:
@@ -14,69 +14,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  typecheck:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-
-  test:
-    name: Test (shard ${{ matrix.shard }}/4)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      # One shard holds the end-to-end suite, which starts the real server on
-      # port 8899 and plays a full game between two WebSocket clients. Shards
-      # get a runner each, so that fixed port is never contended.
-      - run: bunx vitest run --shard=${{ matrix.shard }}/4
-
-  e2e:
-    name: Browser tests (shard ${{ matrix.shard }}/4)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    # Ships the browsers and their system libraries, so there is nothing to
-    # download. The tag has to match the pinned `@playwright/test` exactly —
-    # the image holds the browser builds for that one version.
-    container: mcr.microsoft.com/playwright:v1.62.1-noble
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      # Playwright starts the app itself (`bun run dev`: Vite plus the game server).
-      - run: bunx playwright test --shard=${{ matrix.shard }}/4
-
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ matrix.shard }}
-          path: playwright-report/
-          retention-days: 7
-
   publish:
     name: Build and push
-    # The suite gates the pull request; by the time a commit reaches main it has
-    # already run, so a push only builds and deploys.
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
