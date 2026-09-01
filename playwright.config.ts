@@ -1,11 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 /**
- * Browser tests for the board games app.
- *
- * Standalone on purpose: this folder has its own manifest and its own
- * `node_modules`, and nothing in the game project references it. Delete the
- * folder and the app is exactly as it was.
+ * Browser tests for the board games app, in `e2e/`.
  *
  * The specs are named `*.e2e.ts` rather than `*.spec.ts` for one specific
  * reason: the app runs Vitest from the repository root, and Vitest's default
@@ -19,7 +15,7 @@ import { defineConfig, devices } from '@playwright/test'
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 
 export default defineConfig({
-  testDir: './tests',
+  testDir: './e2e/tests',
   testMatch: '**/*.e2e.ts',
 
   /* A table is two browser contexts talking over a websocket, so a test is
@@ -133,7 +129,6 @@ export default defineConfig({
     ? undefined
     : {
         command: 'bun run dev',
-        cwd: '..',
         url: BASE_URL,
         reuseExistingServer: true,
         timeout: 120_000,
