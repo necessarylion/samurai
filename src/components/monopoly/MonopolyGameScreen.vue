@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import GameIcon from '../common/GameIcon.vue'
 import LogPanel from '../common/LogPanel.vue'
 import SeatToken from '../common/SeatToken.vue'
@@ -131,6 +131,72 @@ watch(
   },
 )
 
+// --- narrow screens ----------------------------------------------------------
+
+/**
+ * Below this the three columns stop fitting and the table reorganises around
+ * the board, which is the game: the two side columns become sheets summoned
+ * from a tab bar, and the prompt that lives in the middle of the board moves
+ * out from under it, where a button is big enough to hit with a thumb.
+ *
+ * Kept in step with the `60rem` media queries in the stylesheet, which do the
+ * laying out; this side only decides what is open and where the prompt goes.
+ */
+const COMPACT_PX = 960
+const compact = ref(window.innerWidth <= COMPACT_PX)
+
+/** Which side panel is up, or null. Only ever one of them at a time. */
+type Panel = 'players' | 'properties' | 'log'
+const panel = ref<Panel | null>(null)
+
+/**
+ * Where the prompt goes once the board has no room for it. A `Teleport` rather
+ * than a second copy of it: the prompt is the whole of what the table is
+ * waiting on — a purchase, an auction, a debt, a throw — and two of them would
+ * be two chances to drift apart.
+ */
+const actionsSlot = ref<HTMLElement | null>(null)
+
+function onResize() {
+  compact.value = window.innerWidth <= COMPACT_PX
+  // Widening puts the panels back in their columns, so nothing is left open
+  // over a layout that no longer has anything to cover.
+  if (!compact.value) panel.value = null
+}
+
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
+
+function togglePanel(which: Panel) {
+  panel.value = panel.value === which ? null : which
+  if (panel.value === 'log') seenLog.value = logCount.value
+}
+
+/**
+ * How much of the log has gone by behind a shut sheet. On a wide screen the log
+ * is always on show, so there is never anything unread; the first count seen is
+ * a baseline, or arriving at a game in progress would announce forty lines
+ * nobody has missed.
+ */
+const logCount = computed(() => state.value?.log.length ?? 0)
+const seenLog = ref<number | null>(null)
+
+watch(
+  logCount,
+  (n) => {
+    if (seenLog.value === null || !compact.value || panel.value === 'log') seenLog.value = n
+  },
+  { immediate: true },
+)
+
+const unreadLog = computed(() => Math.max(0, logCount.value - (seenLog.value ?? logCount.value)))
+
+/** The one panel the two side columns share, so each knows what to head itself. */
+const sideTitle = computed(() => (panel.value === 'log' ? t('log.title') : t('lobby.players')))
+
+/** The dice give up a little on a small board; below this they read as pips. */
+const dieSize = computed(() => (compact.value ? 60 : 86))
+
 // --- the board ---------------------------------------------------------------
 
 /**
@@ -218,6 +284,16 @@ watch(
   () => (bidAmount.value = game.mpMinBid),
   { immediate: true },
 )
+
+/*
+ * A bid is capped by the cash in hand. The engine refuses anything above it, so
+ * the table's job is to never send one: the field carries the ceiling, the
+ * button will not fire over it, and a seat that cannot even reach the standing
+ * bid is offered the one move it has left rather than a box it cannot use.
+ */
+const overCash = computed(() => bidAmount.value > game.mpMaxBid)
+const canCoverBid = computed(() => game.mpMaxBid >= game.mpMinBid)
+const bidIsLegal = computed(() => bidAmount.value >= game.mpMinBid && !overCash.value)
 
 const buyingElsewhere = computed(() =>
   pending.value?.step === 'buy' && pending.value.player !== game.you ? pending.value : null,
@@ -321,6 +397,9 @@ const CARD_W = 240
 const CARD_GAP = 10
 
 function showDetail(event: Event, n: number) {
+  // On a narrow screen the same gesture opens the sheet below, and a card hung
+  // off a 30px tile would be most of the screen anyway.
+  if (compact.value) return
   const el = event.currentTarget as HTMLElement | null
   if (!el) return
   const r = el.getBoundingClientRect()
@@ -339,13 +418,25 @@ function showDetail(event: Event, n: number) {
 
 const hideDetail = () => (detail.value = null)
 
-/** The sector colour for the hovered space, so the card is banded like the board. */
-const detailBand = computed(() => {
-  const n = detail.value?.n
-  if (n === undefined) return null
+/**
+ * A tap opens the same card as a hover, as a sheet. A phone has no hover at all,
+ * and the board's own tile is down to a name and a colour at that size — so the
+ * space's rent ladder has to be reachable, and this is the way to it.
+ */
+const detailSheet = ref<number | null>(null)
+
+function tapSpace(n: number) {
+  if (compact.value) detailSheet.value = n
+}
+
+/** A space's sector colour, which bands both the card and the board. */
+function bandOf(n: number): string | null {
   const space = SPACES[n]
   return space.kind === 'street' ? GROUP_COLOUR[space.group] : null
-})
+}
+
+/** The sector colour for the hovered space, so the card is banded like the board. */
+const detailBand = computed(() => (detail.value === null ? null : bandOf(detail.value.n)))
 </script>
 
 <template>
@@ -370,8 +461,43 @@ const detailBand = computed(() => {
       </div>
     </header>
 
+    <!-- Whose turn it is and what each seat is holding, for a screen with the
+         players column shut. Scrolls sideways rather than wrapping: a phone has
+         room for two or three of these at a time. -->
+    <div v-if="compact" class="now" role="list">
+      <div
+        v-for="p in players"
+        :key="p.id"
+        role="listitem"
+        class="now-seat"
+        :class="{ current: p.id === state?.current && !isOver, out: p.bankrupt }"
+        :style="{ '--seat': PLAYER_COLOURS[p.colour].ink }"
+      >
+        <SeatToken :colour="p.colour" :size="18" :current="p.id === state?.current && !isOver" :label="p.name" />
+        <span class="now-name">{{ p.id === game.you ? t('lobby.badge.you') : p.name }}</span>
+        <span class="now-cash">{{ money(p.cash) }}</span>
+      </div>
+    </div>
+
     <main class="table">
-      <aside class="side">
+      <!-- Before the board in the source and after it on screen, so the prompt
+           has somewhere to land on the very first render. -->
+      <div v-if="compact" ref="actionsSlot" class="actions-slot"></div>
+
+      <aside
+        class="side"
+        :class="{
+          sheet: compact,
+          open: compact && (panel === 'players' || panel === 'log'),
+          'only-log': panel === 'log',
+          'only-players': panel === 'players',
+        }"
+      >
+        <div v-if="compact" class="sheet-head">
+          <strong>{{ sideTitle }}</strong>
+          <button class="btn ghost small" @click="panel = null">{{ t('monopoly.panel.close') }}</button>
+        </div>
+
         <ul class="players">
           <li
             v-for="p in players"
@@ -428,6 +554,7 @@ const detailBand = computed(() => {
             }"
             tabindex="0"
             :aria-label="spaceTitle(c.n)"
+            @click="tapSpace(c.n)"
             @mouseenter="showDetail($event, c.n)"
             @focus="showDetail($event, c.n)"
             @mouseleave="hideDetail()"
@@ -467,129 +594,174 @@ const detailBand = computed(() => {
             <!-- Both dice tumble on every throw, and go on showing the last
                  result between throws so the table can read what just happened. -->
             <div v-if="state?.phase === 'play'" class="dice">
-              <Die3D :face="diceFaces[0]" :roll-key="rollKey" :duration-ms="ROLL_MS" :size="86" />
-              <Die3D :face="diceFaces[1]" :roll-key="rollKey" :duration-ms="ROLL_MS" :size="86" />
+              <Die3D :face="diceFaces[0]" :roll-key="rollKey" :duration-ms="ROLL_MS" :size="dieSize" />
+              <Die3D :face="diceFaces[1]" :roll-key="rollKey" :duration-ms="ROLL_MS" :size="dieSize" />
             </div>
 
-            <div v-if="animating" class="prompt">
-              <p class="tiny muted">{{ turnLabel }}</p>
-            </div>
+            <!--
+              The prompt is the whole of what the table is waiting on. It sits in
+              the middle of the board where there is room for it, and moves to a
+              bar under the board where there is not — the same elements either
+              way, carried across by the teleport rather than written twice.
+            -->
+            <Teleport :to="actionsSlot" :disabled="!compact || !actionsSlot">
+              <div class="prompts">
+                <div v-if="animating" class="prompt">
+                  <p class="tiny muted">{{ turnLabel }}</p>
+                </div>
 
-            <div v-else-if="isOver && winner" class="prompt over">
-              <strong>{{ t('monopoly.winner', { name: winner }) }}</strong>
-              <p class="tiny muted">{{ t('monopoly.result.reason') }}</p>
-              <button v-if="game.isHost" class="btn" @click="game.rematch()">{{ t('over.playAgain') }}</button>
-            </div>
+                <div v-else-if="isOver && winner" class="prompt over">
+                  <strong>{{ t('monopoly.winner', { name: winner }) }}</strong>
+                  <p class="tiny muted">{{ t('monopoly.result.reason') }}</p>
+                  <button v-if="game.isHost" class="btn" @click="game.rematch()">{{ t('over.playAgain') }}</button>
+                </div>
 
-            <div v-else-if="game.mpDebt !== null" class="prompt urgent">
-              <strong>{{ t('monopoly.debt.title', { amount: money(game.mpDebt) }) }}</strong>
-              <p class="tiny muted">{{ t('monopoly.debt.hint') }}</p>
-              <button class="btn danger" @click="game.mpGiveUp()">{{ t('monopoly.debt.giveUp') }}</button>
-            </div>
+                <div v-else-if="game.mpDebt !== null" class="prompt urgent">
+                  <strong>{{ t('monopoly.debt.title', { amount: money(game.mpDebt) }) }}</strong>
+                  <p class="tiny muted">{{ t('monopoly.debt.hint') }}</p>
+                  <button class="btn danger" @click="game.mpGiveUp()">{{ t('monopoly.debt.giveUp') }}</button>
+                </div>
 
-            <div v-else-if="game.mpInJail" class="prompt">
-              <strong>{{ t('monopoly.jail.title') }}</strong>
-              <div class="prompt-actions">
-                <button class="btn" :disabled="!game.mpCan?.jailPay" @click="game.mpLeaveJail('pay')">
-                  {{ t('monopoly.jail.pay', { fine: JAIL_FINE }) }}
-                </button>
-                <button class="btn" :disabled="!game.mpCan?.jailCard" @click="game.mpLeaveJail('card')">
-                  {{ t('monopoly.jail.card') }}
-                </button>
-                <button class="btn" @click="game.mpLeaveJail('roll')">{{ t('monopoly.jail.roll') }}</button>
+                <div v-else-if="game.mpInJail" class="prompt">
+                  <strong>{{ t('monopoly.jail.title') }}</strong>
+                  <div class="prompt-actions">
+                    <button class="btn" :disabled="!game.mpCan?.jailPay" @click="game.mpLeaveJail('pay')">
+                      {{ t('monopoly.jail.pay', { fine: JAIL_FINE }) }}
+                    </button>
+                    <button class="btn" :disabled="!game.mpCan?.jailCard" @click="game.mpLeaveJail('card')">
+                      {{ t('monopoly.jail.card') }}
+                    </button>
+                    <button class="btn" @click="game.mpLeaveJail('roll')">{{ t('monopoly.jail.roll') }}</button>
+                  </div>
+                </div>
+
+                <div v-else-if="game.mpBuyOffer !== null" class="prompt">
+                  <strong>{{ t('monopoly.buy.title', { name: SPACES[game.mpBuyOffer].name }) }}</strong>
+                  <div class="prompt-actions">
+                    <button class="btn" @click="game.mpBuy()">
+                      {{ t('monopoly.buy.action', { price: money(priceOf(game.mpBuyOffer)) }) }}
+                    </button>
+                    <button class="btn ghost" @click="game.mpPass()">{{ t('monopoly.buy.pass') }}</button>
+                  </div>
+                </div>
+
+                <div v-else-if="auction" class="prompt">
+                  <strong>{{ t('monopoly.auction.title', { name: SPACES[auction.space].name }) }}</strong>
+                  <p class="tiny muted">
+                    {{
+                      auction.highBidder === null
+                        ? t('monopoly.auction.none')
+                        : t('monopoly.auction.standing', { amount: money(auction.high), name: nameOf(auction.highBidder) })
+                    }}
+                  </p>
+                  <template v-if="game.mpCanBid && canCoverBid">
+                    <div class="prompt-actions">
+                      <label class="bid-field">
+                        <input
+                          v-model.number="bidAmount"
+                          class="bid"
+                          type="number"
+                          :min="game.mpMinBid"
+                          :max="game.mpMaxBid"
+                          step="1"
+                        />
+                        <span class="bid-unit tiny muted">{{ money(bidAmount || 0) }}</span>
+                      </label>
+                      <button class="btn" :disabled="!bidIsLegal" @click="game.mpBid(bidAmount)">
+                        {{ t('monopoly.auction.bid') }}
+                      </button>
+                      <button class="btn ghost" @click="game.mpPass()">
+                        {{ t('monopoly.auction.pass') }}
+                      </button>
+                    </div>
+                    <p class="tiny bid-cap" :class="overCash ? 'over' : 'muted'">
+                      {{
+                        overCash
+                          ? t('monopoly.auction.tooHigh')
+                          : t('monopoly.auction.cash', { amount: money(game.mpMaxBid) })
+                      }}
+                    </p>
+                  </template>
+
+                  <!-- In the window, but with nothing that could beat the standing
+                       bid: dropping out is the only move left. -->
+                  <template v-else-if="game.mpCanBid">
+                    <p class="tiny over">
+                      {{ t('monopoly.auction.broke', { amount: money(game.mpMinBid) }) }}
+                    </p>
+                    <div class="prompt-actions">
+                      <button class="btn ghost" @click="game.mpPass()">
+                        {{ t('monopoly.auction.pass') }}
+                      </button>
+                    </div>
+                  </template>
+                  <!-- Two ways to have nothing to do here, and they are opposites. -->
+                  <p v-else-if="auction.highBidder === game.you" class="tiny muted">
+                    {{ t('monopoly.auction.leading') }}
+                  </p>
+                  <p v-else class="tiny muted">{{ t('monopoly.auction.out') }}</p>
+                </div>
+
+                <div v-else-if="offerToMe" class="prompt">
+                  <strong>{{ t('monopoly.trade.incoming', { name: nameOf(offerToMe.from) }) }}</strong>
+                  <dl class="terms tiny">
+                    <dt>{{ t('monopoly.trade.theyGive') }}</dt>
+                    <dd>
+                      {{ offerToMe.give.spaces.map((i) => SPACES[i].name).join(', ') || t('monopoly.trade.nothing') }}
+                      <template v-if="offerToMe.give.cash"> + {{ money(offerToMe.give.cash) }}</template>
+                    </dd>
+                    <dt>{{ t('monopoly.trade.theyWant') }}</dt>
+                    <dd>
+                      {{ offerToMe.want.spaces.map((i) => SPACES[i].name).join(', ') || t('monopoly.trade.nothing') }}
+                      <template v-if="offerToMe.want.cash"> + {{ money(offerToMe.want.cash) }}</template>
+                    </dd>
+                  </dl>
+                  <div class="prompt-actions">
+                    <button class="btn" @click="game.mpAcceptTrade()">{{ t('monopoly.trade.accept') }}</button>
+                    <button class="btn ghost" @click="game.mpDeclineTrade()">{{ t('monopoly.trade.decline') }}</button>
+                  </div>
+                </div>
+
+                <div v-else-if="myOfferOut" class="prompt">
+                  <p class="tiny muted">{{ t('monopoly.trade.waiting', { name: nameOf(myOfferOut.to) }) }}</p>
+                </div>
+
+                <div v-else-if="tradeElsewhere" class="prompt">
+                  <p class="tiny muted">
+                    {{ t('monopoly.trade.elsewhere', { a: nameOf(tradeElsewhere.from), b: nameOf(tradeElsewhere.to) }) }}
+                  </p>
+                </div>
+
+                <div v-else-if="buyingElsewhere" class="prompt">
+                  <p class="tiny muted">
+                    {{ t('monopoly.buy.other', { name: nameOf(buyingElsewhere.player), space: SPACES[buyingElsewhere.space].name }) }}
+                  </p>
+                </div>
+
+                <div v-else-if="debtElsewhere" class="prompt">
+                  <p class="tiny muted">
+                    {{ t('monopoly.debt.other', { name: nameOf(debtElsewhere.player), amount: money(debtElsewhere.amount) }) }}
+                  </p>
+                </div>
+
+                <div v-else class="prompt">
+                  <button v-if="game.mpCanRoll" class="btn big" @click="game.mpRoll()">
+                    {{ state?.lastRoll?.doubles && state.lastRoll.player === game.you ? t('monopoly.rollAgain') : t('monopoly.roll') }}
+                  </button>
+                  <button v-else-if="game.mpCanEndTurn" class="btn big" @click="game.mpEndTurn()">
+                    {{ t('monopoly.endTurn') }}
+                  </button>
+                  <p v-else class="tiny muted">{{ turnLabel }}</p>
+                  <button
+                    v-if="game.mpTradePartners.length"
+                    class="btn ghost small"
+                    @click="showTrade = true"
+                  >
+                    {{ t('monopoly.trade.open') }}
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div v-else-if="game.mpBuyOffer !== null" class="prompt">
-              <strong>{{ t('monopoly.buy.title', { name: SPACES[game.mpBuyOffer].name }) }}</strong>
-              <div class="prompt-actions">
-                <button class="btn" @click="game.mpBuy()">
-                  {{ t('monopoly.buy.action', { price: money(priceOf(game.mpBuyOffer)) }) }}
-                </button>
-                <button class="btn ghost" @click="game.mpPass()">{{ t('monopoly.buy.pass') }}</button>
-              </div>
-            </div>
-
-            <div v-else-if="auction" class="prompt">
-              <strong>{{ t('monopoly.auction.title', { name: SPACES[auction.space].name }) }}</strong>
-              <p class="tiny muted">
-                {{
-                  auction.highBidder === null
-                    ? t('monopoly.auction.none')
-                    : t('monopoly.auction.standing', { amount: money(auction.high), name: nameOf(auction.highBidder) })
-                }}
-              </p>
-              <div v-if="game.mpCanBid" class="prompt-actions">
-                <label class="bid-field">
-                  <input v-model.number="bidAmount" class="bid" type="number" :min="game.mpMinBid" step="1" />
-                  <span class="bid-unit tiny muted">{{ money(bidAmount || 0) }}</span>
-                </label>
-                <button class="btn" :disabled="bidAmount < game.mpMinBid" @click="game.mpBid(bidAmount)">
-                  {{ t('monopoly.auction.bid') }}
-                </button>
-                <button class="btn ghost" @click="game.mpPass()">{{ t('monopoly.auction.pass') }}</button>
-              </div>
-              <p v-else class="tiny muted">{{ t('monopoly.auction.out') }}</p>
-            </div>
-
-            <div v-else-if="offerToMe" class="prompt">
-              <strong>{{ t('monopoly.trade.incoming', { name: nameOf(offerToMe.from) }) }}</strong>
-              <dl class="terms tiny">
-                <dt>{{ t('monopoly.trade.theyGive') }}</dt>
-                <dd>
-                  {{ offerToMe.give.spaces.map((i) => SPACES[i].name).join(', ') || t('monopoly.trade.nothing') }}
-                  <template v-if="offerToMe.give.cash"> + {{ money(offerToMe.give.cash) }}</template>
-                </dd>
-                <dt>{{ t('monopoly.trade.theyWant') }}</dt>
-                <dd>
-                  {{ offerToMe.want.spaces.map((i) => SPACES[i].name).join(', ') || t('monopoly.trade.nothing') }}
-                  <template v-if="offerToMe.want.cash"> + {{ money(offerToMe.want.cash) }}</template>
-                </dd>
-              </dl>
-              <div class="prompt-actions">
-                <button class="btn" @click="game.mpAcceptTrade()">{{ t('monopoly.trade.accept') }}</button>
-                <button class="btn ghost" @click="game.mpDeclineTrade()">{{ t('monopoly.trade.decline') }}</button>
-              </div>
-            </div>
-
-            <div v-else-if="myOfferOut" class="prompt">
-              <p class="tiny muted">{{ t('monopoly.trade.waiting', { name: nameOf(myOfferOut.to) }) }}</p>
-            </div>
-
-            <div v-else-if="tradeElsewhere" class="prompt">
-              <p class="tiny muted">
-                {{ t('monopoly.trade.elsewhere', { a: nameOf(tradeElsewhere.from), b: nameOf(tradeElsewhere.to) }) }}
-              </p>
-            </div>
-
-            <div v-else-if="buyingElsewhere" class="prompt">
-              <p class="tiny muted">
-                {{ t('monopoly.buy.other', { name: nameOf(buyingElsewhere.player), space: SPACES[buyingElsewhere.space].name }) }}
-              </p>
-            </div>
-
-            <div v-else-if="debtElsewhere" class="prompt">
-              <p class="tiny muted">
-                {{ t('monopoly.debt.other', { name: nameOf(debtElsewhere.player), amount: money(debtElsewhere.amount) }) }}
-              </p>
-            </div>
-
-            <div v-else class="prompt">
-              <button v-if="game.mpCanRoll" class="btn big" @click="game.mpRoll()">
-                {{ state?.lastRoll?.doubles && state.lastRoll.player === game.you ? t('monopoly.rollAgain') : t('monopoly.roll') }}
-              </button>
-              <button v-else-if="game.mpCanEndTurn" class="btn big" @click="game.mpEndTurn()">
-                {{ t('monopoly.endTurn') }}
-              </button>
-              <p v-else class="tiny muted">{{ turnLabel }}</p>
-              <button
-                v-if="game.mpTradePartners.length"
-                class="btn ghost small"
-                @click="showTrade = true"
-              >
-                {{ t('monopoly.trade.open') }}
-              </button>
-            </div>
+            </Teleport>
 
             <!-- Keyed on the draw count, so the deal animation replays for every
                  card rather than only for the first: Vue tears the old element
@@ -609,7 +781,12 @@ const detailBand = computed(() => {
         </div>
       </section>
 
-      <aside class="manage">
+      <aside class="manage" :class="{ sheet: compact, open: compact && panel === 'properties' }">
+        <div v-if="compact" class="sheet-head">
+          <strong>{{ t('monopoly.manage.title') }}</strong>
+          <button class="btn ghost small" @click="panel = null">{{ t('monopoly.panel.close') }}</button>
+        </div>
+
         <h3>{{ t('monopoly.manage.title') }}</h3>
         <p v-if="!myHoldings.length" class="tiny muted">{{ t('monopoly.manage.none') }}</p>
         <ul v-else class="deeds">
@@ -741,7 +918,54 @@ const detailBand = computed(() => {
           </section>
         </template>
       </aside>
+      <!-- The two side columns, reachable without giving up any of the board. -->
+      <nav v-if="compact" class="tabs" :aria-label="t('monopoly.manage.title')">
+        <button
+          type="button"
+          class="tab"
+          :class="{ on: panel === 'players' }"
+          :aria-expanded="panel === 'players'"
+          @click="togglePanel('players')"
+        >
+          {{ t('monopoly.tab.players') }}
+          <span class="tab-count">{{ players.length }}</span>
+        </button>
+        <button
+          type="button"
+          class="tab"
+          :class="{ on: panel === 'properties' }"
+          :aria-expanded="panel === 'properties'"
+          @click="togglePanel('properties')"
+        >
+          {{ t('monopoly.tab.property') }}
+          <span class="tab-count">{{ myHoldings.length }}</span>
+        </button>
+        <button
+          type="button"
+          class="tab"
+          :class="{ on: panel === 'log' }"
+          :aria-expanded="panel === 'log'"
+          @click="togglePanel('log')"
+        >
+          {{ t('monopoly.tab.log') }}
+          <span v-if="unreadLog" class="tab-count unread">{{ unreadLog }}</span>
+        </button>
+      </nav>
+
+      <!-- Dims the board under an open sheet, and puts it away when tapped. -->
+      <div v-if="compact && panel" class="sheet-scrim" @click="panel = null"></div>
     </main>
+
+    <!-- A tapped space, where there is no hover to open the card with. The card
+         itself is the desktop one — only the way in and the frame differ. -->
+    <div v-if="compact && detailSheet !== null" class="detail-scrim" @click="detailSheet = null">
+      <div class="detail-sheet" @click.stop>
+        <SpaceDetail :n="detailSheet" :band="bandOf(detailSheet)" />
+        <button class="btn ghost small" @click="detailSheet = null">
+          {{ t('monopoly.panel.close') }}
+        </button>
+      </div>
+    </div>
 
     <!-- Rendered at the end of the app rather than inside the board, so it is
          never clipped by a scrolling column. -->
@@ -1099,6 +1323,16 @@ const detailBand = computed(() => {
   gap: 2px;
 }
 
+/* Sized off the board, not off a fixed number: `cqw` resolves against `.board`
+   (which declares the container), so a token is the same fraction of its space
+   whether the board is 900px on a monitor or 320px on a phone. The floor keeps
+   it a recognisable piece rather than a speck; the ceiling is the size the
+   desktop board was drawn around. */
+.tokens :deep(.seat-token) {
+  width: clamp(8px, 2.6cqw, 15px);
+  height: auto;
+}
+
 /* The pieces sit above the space's own content and may spill a little past the
    cell — a token that had to fit inside the padding would be back to a dot. */
 .tokens {
@@ -1134,6 +1368,13 @@ const detailBand = computed(() => {
   background: var(--paper-2);
   text-align: center;
   perspective: 700px;
+}
+
+/* Invisible where the prompt stays on the board: its children go on being
+   `.centre-panel`'s own flex items, exactly as they were before the teleport
+   was put around them. It becomes a real box only in the bar under the board. */
+.prompts {
+  display: contents;
 }
 
 .prompt {
@@ -1172,6 +1413,16 @@ const detailBand = computed(() => {
 
 .bid-unit {
   font-variant-numeric: tabular-nums;
+}
+
+/* What the cash in hand allows, under the field it caps. */
+.bid-cap {
+  font-variant-numeric: tabular-nums;
+}
+
+.over {
+  color: var(--vermillion-dark);
+  font-weight: 600;
 }
 
 .bid {
@@ -1582,15 +1833,444 @@ const detailBand = computed(() => {
   color: var(--ink-soft);
 }
 
+/* --- a board too small to letter fully -------------------------------------
+
+   A container query, not a media query: what decides whether a space can carry
+   its price is how wide the *board* is, and the board is a container. A phone
+   in landscape and a narrow desktop window arrive at the same board width by
+   different routes, and both want the same tile.
+
+   The price goes first — it is the one figure a tap can give back in full, and
+   at this size it was three pixels of tabular numerals. What is left is the
+   identity of the space and who owns it, which is the order the board is
+   actually read in. */
+@container (max-width: 28rem) {
+  .space {
+    font-size: clamp(0.5rem, 1.5cqw, 0.78rem);
+    padding: 1px;
+  }
+
+  .space-price {
+    display: none;
+  }
+
+  /* The name takes the room the price gave up. */
+  .space-name {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .logo {
+    width: 66%;
+    max-height: 44%;
+  }
+
+  /* The bands stay the same fraction of the tile, so the ring still reads as a
+     ring; only the content inset comes back a little. */
+  .side-bottom {
+    padding-top: 30%;
+  }
+
+  .side-top {
+    padding-bottom: 30%;
+  }
+
+  .side-left {
+    padding-right: 30%;
+  }
+
+  .side-right {
+    padding-left: 30%;
+  }
+}
+
+/* --- the compact table -----------------------------------------------------
+
+   Below this the three columns cannot all have room worth having, and the
+   board is the game — so it takes the width, the prompt moves to a bar
+   underneath it where a thumb can reach, and the two side columns become
+   sheets behind a tab bar. Everything here is a rearrangement: the same
+   elements, the same components, the same state. */
 @media (max-width: 60rem) {
   .table {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: min-content;
+    gap: 0.5rem;
+    padding: 0.5rem;
     overflow-y: auto;
   }
 
   .board {
+    /* Width first; the cap is only there to stop a tall narrow window drawing a
+       board taller than the room left under the topbar. `dvh` rather than `vh`,
+       so a mobile browser's toolbars are counted. */
+    width: min(100%, 80dvh);
+  }
+
+  /* Source order puts the slot before the board so the teleport has a target on
+     the first render; screen order puts it after, under the board. */
+  .board-wrap {
+    order: 1;
+  }
+
+  .actions-slot {
+    order: 2;
+  }
+
+  .tabs {
+    order: 3;
+  }
+
+  /* --- the prompt, docked ------------------------------------------------- */
+
+  .prompts {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    text-align: center;
+  }
+
+  .prompt {
+    align-items: stretch;
+  }
+
+  /* Full-width targets. These are the buttons the game is played with, and on a
+     phone they are the only ones on screen. */
+  .prompt-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: 0.4rem;
+  }
+
+  .prompt-actions .btn,
+  .prompts > .prompt > .btn {
     width: 100%;
+    min-height: 2.75rem;
+  }
+
+  .bid-field {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .bid {
+    width: 100%;
+    min-height: 2.75rem;
+  }
+
+  /* --- who is on, and what they are holding -------------------------------- */
+
+  .now {
+    flex: none;
+    display: flex;
+    gap: 0.35rem;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--gold-line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .now-seat {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex: none;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--gold-line);
+    border-radius: 999px;
+    background: var(--paper);
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  /* The seat on turn is the one fact this strip exists to carry. */
+  .now-seat.current {
+    border-color: var(--seat);
+    box-shadow: inset 0 0 0 1px var(--seat);
+    background: var(--paper-2);
+  }
+
+  .now-seat.out {
+    opacity: 0.5;
+  }
+
+  .now-name {
+    font-weight: 600;
+    max-width: 6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .now-cash {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+  }
+
+  /* --- the tab bar --------------------------------------------------------- */
+
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.35rem;
+    padding: 0.35rem 0 calc(0.15rem + env(safe-area-inset-bottom));
+    background: var(--paper);
+    border-top: 1px solid var(--gold-line);
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--gold-line);
+    border-radius: 9px;
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    /* Three labels across the narrowest phone, in a script with no spaces to
+       break at either — so they are allowed to shrink and to wrap. */
+    font-size: clamp(0.7rem, 2.6vw, 0.85rem);
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+    touch-action: manipulation;
+  }
+
+  .tab.on {
+    background: var(--paper-3);
+    border-color: var(--ink-faint);
+  }
+
+  .tab-count {
+    flex: none;
+    min-width: 1.3rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--paper-3);
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* What has gone by behind a shut sheet, which is the only thing on this bar
+     that is news rather than a count. */
+  .tab-count.unread {
+    background: var(--vermillion);
+    color: #fff;
+  }
+
+  /* --- the side columns, as sheets ---------------------------------------- */
+
+  .side,
+  .manage {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    max-height: min(72dvh, 32rem);
+    padding: 0.7rem 0.7rem calc(0.7rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--gold-line);
+    border-radius: 14px 14px 0 0;
+    background: var(--paper);
+    box-shadow: var(--shadow-lg);
+    /* Off the bottom until asked for, and out of the reach of a stray tap or a
+       tab key while it is down there. */
+    transform: translateY(100%);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s;
+  }
+
+  .side.open,
+  .manage.open {
+    transform: translateY(0);
+    visibility: visible;
+  }
+
+  .sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--gold-line);
+  }
+
+  .sheet-head strong {
+    font-family: var(--font-display);
+  }
+
+  /* One column, two panels: the seats and the log share a sheet and take turns
+     in it, so the tab bar can offer them separately without a third element. */
+  .side.only-log .players,
+  .side.only-log .bank {
+    display: none;
+  }
+
+  .side.only-players .log {
+    display: none;
+  }
+
+  .sheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgba(28, 22, 19, 0.35);
+  }
+
+  /* --- a tapped space ------------------------------------------------------ */
+
+  .detail-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(28, 22, 19, 0.45);
+  }
+
+  .detail-sheet {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    width: 100%;
+    max-height: 88dvh;
+    overflow-y: auto;
+    padding: 0.7rem 0.7rem calc(0.7rem + env(safe-area-inset-bottom));
+    border-radius: 14px 14px 0 0;
+    background: var(--paper);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* The card is the desktop one; only its frame is different here. */
+  .detail-sheet :deep(.detail) {
+    width: 100%;
+    box-shadow: none;
+    border: 0;
+    border-top: 4px solid var(--band);
+  }
+
+  /* --- the header ---------------------------------------------------------- */
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.3rem 0.6rem;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .turn {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+
+  .turn strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Said again at the head of the table menu, and the widest thing in the row. */
+  .code {
+    display: none;
+  }
+
+  .centre-panel {
+    padding: 0.5rem;
+    gap: 0.35rem;
+    /* Whatever is dealt into the middle stays inside the ring rather than
+       spilling over the spaces around it. */
+    overflow: hidden;
+  }
+
+  .card-drawn {
+    padding: 0.45rem 0.55rem 0.4rem;
+  }
+
+  .card-text {
+    font-size: 0.78rem;
+  }
+
+  .salary {
+    display: none;
+  }
+}
+
+/* Rotated, the width is the plentiful thing and the height is not: the board
+   keeps the left and everything it is played with goes down the right, so
+   nothing has to be scrolled to while a turn is being taken. */
+@media (max-width: 60rem) and (orientation: landscape) {
+  .table {
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, 15rem);
+    align-content: start;
+  }
+
+  .board {
+    width: min(100%, 68dvh);
+  }
+
+  .board-wrap {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .actions-slot {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .tabs {
+    grid-column: 2;
+    grid-row: 2;
+    position: static;
+    grid-template-columns: 1fr;
+    border-top: 0;
+  }
+
+  /* A phone on its side has enough width for these to open at the edge rather
+     than across the board. */
+  .side,
+  .manage {
+    left: auto;
+    top: 0;
+    width: min(24rem, 70%);
+    max-height: none;
+    border-radius: 0;
+    border-left: 1px solid var(--gold-line);
+    transform: translateX(100%);
+  }
+
+  .side.open,
+  .manage.open {
+    transform: translateX(0);
+  }
+
+  .detail-scrim {
+    align-items: center;
+  }
+
+  .detail-sheet {
+    width: min(24rem, 92%);
+    max-height: 92dvh;
+    border-radius: 14px;
+  }
+}
+
+/* The sheets slide; a reader who has asked for less motion gets the same panel
+   without the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .side,
+  .manage {
+    transition: none;
   }
 }
 </style>

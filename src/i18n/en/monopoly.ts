@@ -25,7 +25,7 @@ export const enMonopoly = {
   'monopoly.rule.roll':
     'On your turn, throw two dice and move that many spaces clockwise. Pass the IPO and collect {salary}. Doubles earn you another throw.',
   'monopoly.rule.buy':
-    'Stop on an unowned company, data centre or utility and you may buy it from the bank. Turn it down — or fail to afford it — and it goes to auction, open to the whole table.',
+    'Stop on an unowned company, data centre or utility and you may buy it from the bank. Turn it down — or fail to afford it — and it goes to auction, open to the whole table. Bid no more than the cash in hand, and drop out of the bidding and you are out of it for good.',
   'monopoly.rule.rent':
     'Stop on someone else’s and you pay their rent. A company with nothing built on it charges double once its owner holds the whole sector.',
   'monopoly.rule.build':
@@ -45,6 +45,13 @@ export const enMonopoly = {
   'monopoly.endTurn': 'End turn',
   'monopoly.rolled': '{name} threw {a} and {b}',
 
+  // --- the panels a narrow screen keeps its side columns in ----------------
+  'monopoly.tab.players': 'Players',
+  'monopoly.tab.property': 'Property',
+  'monopoly.tab.log': 'Log',
+  'monopoly.panel.close': 'Close',
+  'monopoly.panel.tap': 'Tap a space for its details',
+
   // --- buying and auctions -------------------------------------------------
   'monopoly.buy.title': '{name} is for sale',
   'monopoly.buy.action': 'Buy for {price}',
@@ -56,7 +63,11 @@ export const enMonopoly = {
   'monopoly.auction.bid': 'Bid',
   'monopoly.auction.pass': 'Drop out',
   'monopoly.auction.waiting': 'Waiting on {count} more bidders',
-  'monopoly.auction.out': 'You have dropped out of this auction.',
+  'monopoly.auction.cash': 'You have {amount} to bid with',
+  'monopoly.auction.tooHigh': 'More than you have in hand',
+  'monopoly.auction.broke': 'You cannot cover {amount}, so dropping out is all that is left.',
+  'monopoly.auction.leading': 'Your bid stands. Waiting on the other bidders.',
+  'monopoly.auction.out': 'You dropped out — you cannot bid for this one again.',
 
   // --- trading -------------------------------------------------------------
   'monopoly.trade.open': 'Offer a trade',

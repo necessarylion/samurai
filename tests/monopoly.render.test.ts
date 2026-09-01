@@ -37,9 +37,17 @@ function screenFor(r: Room, token: string) {
   return mount(MonopolyGameScreen)
 }
 
+/** The table decides its shape from the window; jsdom keeps one per file. */
+function widthOf(px: number) {
+  window.innerWidth = px
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
+  // A desktop window unless a test says otherwise, so the three columns — and
+  // every expectation written against them — are what mounts.
+  widthOf(1200)
 })
 
 describe('the Monopoly table', () => {
@@ -86,6 +94,51 @@ describe('the Monopoly table', () => {
     const out = screenFor(r, 'token-2')
     expect(out.find('input.bid').exists()).toBe(false)
     expect(out.text()).toContain('dropped out')
+  })
+
+  it('caps the bid box at the cash in hand', () => {
+    const r = room()
+    r.monopoly!.state.players[0].cash = 250
+    r.monopoly!.state.pending = [
+      { step: 'auction', space: 3, high: 40, highBidder: 1, passed: [] },
+    ]
+
+    const bidding = screenFor(r, 'token-0')
+    const field = bidding.find('input.bid')
+    // The engine refuses more than the bidder holds, so the field never offers
+    // it: least that beats the standing bid, most that the seat can pay.
+    expect(field.attributes('min')).toBe('41')
+    expect(field.attributes('max')).toBe('250')
+    expect(bidding.text()).toContain('to bid with')
+  })
+
+  it('offers a seat that cannot reach the standing bid its one remaining move', () => {
+    const r = room()
+    r.monopoly!.state.players[0].cash = 30
+    r.monopoly!.state.pending = [
+      { step: 'auction', space: 3, high: 40, highBidder: 1, passed: [] },
+    ]
+
+    // Still in the auction, but no legal bid exists for it — so it is given the
+    // words for that and the drop-out, rather than a box it cannot use.
+    const broke = screenFor(r, 'token-0')
+    expect(broke.find('input.bid').exists()).toBe(false)
+    expect(broke.text()).toContain('cannot cover')
+    expect(broke.text()).toContain('Drop out')
+  })
+
+  it('tells the standing bidder they are winning, not that they are out', () => {
+    const r = room()
+    r.monopoly!.state.pending = [
+      { step: 'auction', space: 3, high: 40, highBidder: 1, passed: [2] },
+    ]
+
+    // Seat 1 has nothing to do until somebody outbids it — the same empty hands
+    // as a seat that walked away, and the opposite situation.
+    const leading = screenFor(r, 'token-1')
+    expect(leading.find('input.bid').exists()).toBe(false)
+    expect(leading.text()).toContain('Your bid stands')
+    expect(leading.text()).not.toContain('dropped out')
   })
 
   it('shows a trade’s terms to the two seats it is between, and not to the table', () => {
@@ -362,5 +415,139 @@ describe('the Monopoly table', () => {
     const screen = screenFor(r, 'token-0')
     expect(screen.text()).toContain('Bo wins!')
     expect(screen.text()).toContain('Play again')
+  })
+})
+
+/*
+ * What the same table does with no room for three columns. Nothing here is a
+ * second implementation: the panels are the same asides, the prompt is the same
+ * chain of buttons carried across by a teleport, and the card a tap opens is the
+ * one a hover opens on a desktop.
+ */
+describe('the table on a narrow screen', () => {
+  it('keeps the three columns and no tab bar where there is width for them', () => {
+    const r = room()
+    const screen = screenFor(r, 'token-0')
+
+    expect(screen.find('.tabs').exists()).toBe(false)
+    expect(screen.find('.now').exists()).toBe(false)
+    expect(screen.find('.side').classes()).not.toContain('sheet')
+    // The prompt stays in the middle of the board.
+    expect(screen.find('.centre-panel .prompt').exists()).toBe(true)
+  })
+
+  it('moves the prompt out from under the board, where a thumb can reach it', async () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+    await screen.vm.$nextTick()
+
+    // The same buttons, in the bar below the board rather than inside it.
+    expect(screen.find('.actions-slot .prompt').exists()).toBe(true)
+    expect(screen.find('.centre-panel .prompt').exists()).toBe(false)
+    expect(screen.find('.actions-slot').text()).toContain('Throw the dice')
+
+    // The dice stay on the board, and give up some of their size for it.
+    expect(screen.find('.centre-panel .dice').exists()).toBe(true)
+  })
+
+  it('carries every seat and its cash above the board', () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+
+    const seats = screen.findAll('.now-seat')
+    expect(seats).toHaveLength(3)
+    // Your own row says so rather than repeating your name back at you.
+    expect(seats[0].text()).toContain('You')
+    expect(seats[1].text()).toContain('Bo')
+    expect(seats[0].text()).toContain(money(r.monopoly!.state.players[0].cash))
+    // The seat on turn is marked, which is the fact the strip exists for.
+    expect(seats[0].classes()).toContain('current')
+    expect(seats[1].classes()).not.toContain('current')
+  })
+
+  it('keeps the side columns off the board until a tab asks for them', async () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+
+    const side = () => screen.find('.side')
+    const manage = () => screen.find('.manage')
+    expect(side().classes()).toContain('sheet')
+    expect(side().classes()).not.toContain('open')
+    expect(manage().classes()).not.toContain('open')
+    expect(screen.find('.sheet-scrim').exists()).toBe(false)
+
+    const tabs = screen.findAll('.tab')
+    expect(tabs).toHaveLength(3)
+
+    // Players and the log share one sheet and take turns in it.
+    await tabs[0].trigger('click')
+    expect(side().classes()).toContain('open')
+    expect(side().classes()).toContain('only-players')
+    expect(screen.find('.sheet-scrim').exists()).toBe(true)
+
+    await tabs[2].trigger('click')
+    expect(side().classes()).toContain('only-log')
+    expect(side().text()).toContain('Play log')
+
+    // Properties is the other column, and only one is ever up.
+    await tabs[1].trigger('click')
+    expect(manage().classes()).toContain('open')
+    expect(side().classes()).not.toContain('open')
+
+    // Tapping beside the sheet puts it away.
+    await screen.find('.sheet-scrim').trigger('click')
+    expect(manage().classes()).not.toContain('open')
+  })
+
+  it('counts the log lines that go by behind a shut sheet, and clears them', async () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+
+    // What was already there when the table opened is not news.
+    expect(screen.find('.tab-count.unread').exists()).toBe(false)
+
+    const store = useGameStore()
+    store.monopoly = {
+      ...store.monopoly!,
+      log: [...store.monopoly!.log, { turn: 1, player: 1, text: 'buys something.' }],
+    }
+    await screen.vm.$nextTick()
+    expect(screen.find('.tab-count.unread').text()).toBe('1')
+
+    await screen.findAll('.tab')[2].trigger('click')
+    expect(screen.find('.tab-count.unread').exists()).toBe(false)
+  })
+
+  it('opens a space card on a tap, since there is no hover to open it with', async () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+
+    expect(screen.find('.detail-sheet').exists()).toBe(false)
+    // The third space is a company, so the card has a price and a rent ladder.
+    await screen.findAll('.space')[3].trigger('click')
+
+    const sheet = screen.find('.detail-sheet')
+    expect(sheet.exists()).toBe(true)
+    expect(sheet.text()).toContain(SPACES[3].name)
+    expect(sheet.text()).toContain(money(priceOf(3)))
+
+    await screen.find('.detail-scrim').trigger('click')
+    expect(screen.find('.detail-sheet').exists()).toBe(false)
+  })
+
+  it('leaves the hover card to the screens that have a pointer', async () => {
+    const r = room()
+    widthOf(390)
+    const screen = screenFor(r, 'token-0')
+
+    // The same event a desktop opens the floating card with does nothing here;
+    // the tap sheet above is what answers it.
+    await screen.findAll('.space')[3].trigger('mouseenter')
+    expect(document.querySelector('.detail-layer')).toBeNull()
   })
 })

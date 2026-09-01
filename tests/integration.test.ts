@@ -1,6 +1,6 @@
 import { DEFAULT_OPTIONS } from '../shared/engine'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { WebSocket } from 'ws'
 
 import type { ClientMessage, ClientState, ServerMessage } from '../shared/protocol'
@@ -61,10 +61,33 @@ class TestClient {
   }
 }
 
+const WINDOWS = process.platform === 'win32'
+
+/**
+ * Stop the server, and mean it.
+ *
+ * Through a shell the child is the shell, not bun — killing it would leave the
+ * server holding the port, and the next run of this file would then fail to
+ * bind. `taskkill /t` takes the tree.
+ */
+function stopServer() {
+  const proc = server
+  if (!proc?.pid) return
+  if (WINDOWS) {
+    spawnSync('taskkill', ['/pid', String(proc.pid), '/t', '/f'], { stdio: 'ignore' })
+    return
+  }
+  proc.kill()
+}
+
 beforeAll(async () => {
   server = spawn('bun', ['server/index.ts'], {
     env: { ...process.env, PORT: String(PORT) },
     stdio: 'ignore',
+    // Installed through npm, bun is a `.cmd` shim on Windows rather than an
+    // executable, and `spawn` cannot launch one without a shell. Everywhere
+    // else it is a real binary and the shell would only be an extra process.
+    shell: WINDOWS,
   })
   // Wait for the port to accept connections.
   for (let i = 0; i < 60; i++) {
@@ -85,7 +108,7 @@ beforeAll(async () => {
   throw new Error('the test server never came up')
 }, 30_000)
 
-afterAll(() => server?.kill())
+afterAll(() => stopServer())
 
 describe('two browsers playing over the wire', () => {
   it('creates a room, joins, plays a full game and scores it', async () => {

@@ -284,7 +284,12 @@ h1 {
     margin-bottom: 0.5rem;
   }
 
+  /* Content-sized, not a shrinkable scroll box. Left flexible with its overflow
+     visible, the grid was squeezed by the column and its last row of tiles then
+     spilled *over* the picks bar — which put a tile on top of the Confirm
+     button and swallowed the tap. The page is what scrolls here. */
   .tiles {
+    flex: none;
     overflow-y: visible;
     grid-template-columns: repeat(auto-fit, minmax(5.4rem, 1fr));
   }

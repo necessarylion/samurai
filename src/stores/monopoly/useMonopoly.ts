@@ -42,6 +42,12 @@ export function createMonopoly(ctx: MonopolyContext) {
   const mpBuyOffer = computed(() => (live.value ? mpCan.value?.buy ?? null : null))
   const mpCanBid = computed(() => live.value && !!mpCan.value?.bid)
   const mpMinBid = computed(() => mpCan.value?.minBid ?? 0)
+  /**
+   * The most this seat may bid: the cash in hand, which is public in this game
+   * and so needs nothing from the server's `can` block. The engine refuses more
+   * than this, so the table must not offer it.
+   */
+  const mpMaxBid = computed(() => mpYou.value?.cash ?? 0)
   const mpTradeOffered = computed(() => live.value && !!mpCan.value?.trade)
   const mpTradePartners = computed(() => (live.value ? mpCan.value?.partners ?? [] : []))
   const mpInJail = computed(() => live.value && !!mpCan.value?.jail)
@@ -67,7 +73,9 @@ export function createMonopoly(ctx: MonopolyContext) {
   }
 
   function mpBid(amount: number) {
-    if (mpCanBid.value && amount >= mpMinBid.value) send({ t: 'monoBid', amount })
+    if (!mpCanBid.value) return
+    if (amount < mpMinBid.value || amount > mpMaxBid.value) return
+    send({ t: 'monoBid', amount })
   }
 
   function mpOfferTrade(to: number, give: TradeSide, want: TradeSide) {
@@ -121,6 +129,7 @@ export function createMonopoly(ctx: MonopolyContext) {
     mpBuyOffer,
     mpCanBid,
     mpMinBid,
+    mpMaxBid,
     mpTradeOffered,
     mpTradePartners,
     mpInJail,

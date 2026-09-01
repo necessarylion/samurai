@@ -14,6 +14,7 @@ import {
   START_CASH,
   buildable,
   groupSpaces,
+  inAuction,
   isOwnable,
   liquidValue,
   mortgageValue,
@@ -24,7 +25,13 @@ import {
   sellable,
   unmortgageCost,
   type MonopolyGameState,
+  type Outcome,
 } from '../shared/monopoly'
+
+/** Why an action was refused, or null when it was allowed. */
+function refusal(outcome: Outcome): string | null {
+  return outcome.ok ? null : outcome.error
+}
 
 /** A dealt game whose opening seat is pinned, so turns can be scripted. */
 function started(playerCount = 2, seed = 7): MonopolyGame {
@@ -285,8 +292,8 @@ describe('buying and auctions', () => {
     expect(game.state.pending[0].step).toBe('auction')
 
     expect(game.bid(1, 50).ok).toBe(true)
-    // A raise reopens the window to everyone who dropped out under it.
     expect(game.bid(2, 70).ok).toBe(true)
+    // Bidding against yourself is not a move: the standing bid is already yours.
     expect(game.bid(2, 80).ok).toBe(false)
     expect(game.pass(0).ok).toBe(true)
     expect(game.pass(1).ok).toBe(true)
@@ -305,6 +312,73 @@ describe('buying and auctions', () => {
     game.pass(1)
     expect(game.state.owners[3]).toBeNull()
     expect(game.state.pending).toHaveLength(0)
+  })
+
+  it('refuses a bid larger than the cash the bidder is holding', () => {
+    const game = started(3)
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+    game.pass(0)
+
+    game.state.players[1].cash = 120
+    expect(refusal(game.bid(1, 121))).toBe('You cannot cover that bid.')
+    expect(game.state.pending[0]).toMatchObject({ high: 0, highBidder: null })
+
+    // Every last note of it, though, is a bid like any other.
+    expect(game.bid(1, 120).ok).toBe(true)
+    expect(game.state.pending[0]).toMatchObject({ high: 120, highBidder: 1 })
+
+    // And winning it spends exactly that, leaving the seat with nothing.
+    expect(game.pass(0).ok).toBe(true)
+    expect(game.pass(2).ok).toBe(true)
+    expect(game.state.owners[3]).toBe(1)
+    expect(game.state.players[1].cash).toBe(0)
+  })
+
+  it('keeps a seat that drops out out of it, however high the bidding goes', () => {
+    const game = started(3)
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+    game.pass(0) // the lander sends it to auction
+
+    expect(game.bid(1, 50).ok).toBe(true)
+    expect(game.pass(2).ok).toBe(true) // seat 2 walks away at $50
+
+    // Seat 0 raises. Under the old rule that reopened the window to everyone;
+    // now it buys seat 2 nothing at all.
+    expect(game.bid(0, 60).ok).toBe(true)
+    expect(game.bid(2, 100).ok).toBe(false)
+    expect(refusal(game.bid(2, 100))).toBe('You are not in this auction.')
+    expect(game.state.pending[0]).toMatchObject({ step: 'auction', passed: [2] })
+
+    // So it comes down to the two who stayed in, and closes when one of them
+    // gives up rather than when the whole table has answered again.
+    expect(game.pass(1).ok).toBe(true)
+    expect(game.state.owners[3]).toBe(0)
+    expect(game.state.players[0].cash).toBe(START_CASH - 60)
+    expect(game.state.pending).toHaveLength(0)
+  })
+
+  it('holds the standing bidder to their bid — no raising it, no walking away', () => {
+    const game = started(3)
+    game.state.players[0].pos = 0
+    rollOf(game, 1, 2)
+    game.roll(0)
+    game.pass(0)
+
+    expect(game.bid(1, 50).ok).toBe(true)
+    expect(refusal(game.bid(1, 90))).toBe('Your bid is already the standing one.')
+    expect(refusal(game.pass(1))).toBe('Your bid stands; you cannot drop out of it.')
+
+    // The auction is still waiting on the seats that have not answered — and on
+    // seat 1 again only if one of them outbids it.
+    expect(game.state.pending[0].step).toBe('auction')
+    expect(inAuction(game.state, 1)).toBe(false)
+    expect(inAuction(game.state, 0)).toBe(true)
+    expect(game.bid(2, 60).ok).toBe(true)
+    expect(inAuction(game.state, 1)).toBe(true)
   })
 
   it('goes straight to auction when the lander cannot afford it', () => {
