@@ -63,8 +63,11 @@ is honest about what it covered rather than quietly passing.
 | `tests/snake.e2e.ts`     | Snake              | One arena, live on both screens                   |
 | `tests/ladders.e2e.ts`   | Snakes & Ladders   | Rolls the die and passes the turn                 |
 
-CI runs the same suite split four ways (`--shard`), one runner each — see
-`.github/workflows/docker-publish.yml`.
+CI runs the same suite split four ways (`--shard`), one runner each, in
+Microsoft's `mcr.microsoft.com/playwright` image so no browser is downloaded —
+see `.github/workflows/docker-publish.yml`. That image carries the browsers for
+one Playwright version, which is why `@playwright/test` is pinned rather than
+ranged: bump the two together.
 
 `support/table.ts` holds what every game does the same way: host, join, start,
 and the two checks every screen owes a phone (no sideways scroll, no button too

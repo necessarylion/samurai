@@ -48,6 +48,10 @@ jobs:
     name: Browser tests (shard ${{ matrix.shard }}/4)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Ships the browsers and their system libraries, so there is nothing to
+    # download. The tag has to match the pinned `@playwright/test` exactly —
+    # the image holds the browser builds for that one version.
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
     strategy:
       fail-fast: false
       matrix:
@@ -58,8 +62,6 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      # Chromium covers every viewport project; WebKit is only for mobile-safari.
-      - run: bunx playwright install --with-deps chromium webkit
       # Playwright starts the app itself (`bun run dev`: Vite plus the game server).
       - run: bunx playwright test --shard=${{ matrix.shard }}/4
 
