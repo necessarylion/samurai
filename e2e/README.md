@@ -31,14 +31,17 @@ E2E_BASE_URL=http://localhost:8787 bun run test:e2e
 
 ## What runs where
 
-Four viewports, all Chromium, so one browser download covers the suite:
+Three viewports, one per layout the app actually has:
 
-| Project        | Viewport   | What it is for                               |
-| -------------- | ---------- | -------------------------------------------- |
-| `mobile`       | 390 × 844  | The phone layouts: sheets, tabs, touch sizes |
-| `mobile-large` | 430 × 932  | The same, with room to spare                 |
-| `tablet`       | 768 × 1024 | The middle layout                            |
-| `desktop`      | 1440 × 900 | The full three-column tables                 |
+| Project   | Browser  | Viewport   | What it is for                               |
+| --------- | -------- | ---------- | -------------------------------------------- |
+| `mobile`  | WebKit   | iPhone 13  | The phone layouts: sheets, tabs, touch sizes |
+| `tablet`  | Chromium | 768 × 1024 | The middle layout                            |
+| `desktop` | Chromium | 1440 × 900 | The full three-column tables                 |
+
+The phone is a real Safari, which is the browser several of the mobile fixes are
+for — `dvh`, `env(safe-area-inset-*)`, and the fullscreen button that hides
+itself on an iPhone.
 
 ```sh
 bun run test:e2e --project=mobile          # one shape
@@ -95,9 +98,9 @@ worth knowing about, which is rather the point.
 
 ## State of the suite
 
-136 runs — seventeen tests across eight viewport projects — of which 120 execute
-and 16 skip themselves, the mobile-only ones on the two projects wide enough for
-the desktop layout. About five minutes on a laptop, one worker.
+51 runs — seventeen tests across three viewport projects — of which 43 execute
+and 8 skip themselves, the mobile-only ones on the two projects wide enough for
+the desktop layout. About a minute and a half on a laptop, one worker.
 
 Three things these tests found, all since fixed in the app:
 
